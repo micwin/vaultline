@@ -229,7 +229,10 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 		return err
 	}
 	if len(data) == 0 {
-		return fmt.Errorf("provide a secret via --value, --file, or --stdin")
+		data, err = promptSecretValue()
+		if err != nil {
+			return err
+		}
 	}
 	req := api.SecretRequest{Value: base64.StdEncoding.EncodeToString(data)}
 	payload, err := json.Marshal(req)
@@ -370,6 +373,20 @@ func readSecretInput(literal, filePath string, stdin bool) ([]byte, error) {
 	default:
 		return []byte(literal), nil
 	}
+}
+
+func promptSecretValue() ([]byte, error) {
+	fmt.Print("Secret value: ")
+	bytesValue, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		return nil, err
+	}
+	value := strings.TrimSpace(string(bytesValue))
+	if value == "" {
+		return nil, fmt.Errorf("empty secret value")
+	}
+	return []byte(value), nil
 }
 
 func readPassphrase() (string, error) {

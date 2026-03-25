@@ -7,7 +7,7 @@ vaultline is a Git-friendly secret store that blends the manual-unseal disciplin
 - **Deterministic encryption**: Passphrase → Argon2id → master key. Every identifier derives its key from the master key, so cloning or importing a store requires only the master passphrase.
 - **Manual unseal**: The daemon refuses to serve the REST API until a passphrase arrives via stdin, TTY prompt, or `VAULTLINE_PASSPHRASE`. Unlock status is stored only in memory; restarts require re-entry.
 - **Simple keys**: Secret names must use lowercase letters plus `.` or `-` (e.g., `infra.db-password`). This keeps filenames Git-friendly while still allowing hierarchical naming.
-- **API + CLI**: REST speaks JSON over HTTP, while the CLI wraps it with ergonomic commands (`vaultline secret put --name app.api-key --stdin`, `vaultline secret get --name ... --out file`, `vaultline secrets list`, `vaultline daemon-stop`). The CLI enforces `localhost` sockets to avoid remote hops.
+- **API + CLI**: REST speaks JSON over HTTP, while the CLI wraps it with ergonomic commands (`vaultline secret put --name app.api-key --stdin`, `vaultline secret get --name ... --out file`, `vaultline secrets list`, `vaultline secrets set --name ...`, `vaultline daemon-stop`). The CLI enforces `localhost` sockets to avoid remote hops.
 - **Portability**: Copy the `store/` directory or tar it up; every secret remains encrypted-at-rest. Import helpers can rekey secrets when moving between hosts.
 - **MFA hooks**: Individual secrets can demand TOTP. The daemon validates tokens using RFC 6238; shared secrets themselves live encrypted so Git never sees them in the clear.
 
@@ -46,9 +46,9 @@ vaultline/
 
 ## Running the daemon and CLI
 1. `go run ./cmd/vaultline daemon --store-dir ./store` — starts the REST API on `127.0.0.1:8428`. If `--store-dir` is omitted, vaultline uses `$XDG_DATA_HOME/vaultline/store` or `~/.local/share/vaultline/store`. Provide `VAULTLINE_PASSPHRASE` to auto-unseal during startup or pass it via environment variables/service configuration. The first successful unseal determines the passphrase for the entire store; afterwards all unseal operations must use the same passphrase. When unsealed, visit `http://127.0.0.1:8428/` to see the current version, seal status, and a sample of stored keys (names only). Use `--seal-file /path/to/file` to enable file-based auto-unseal: vaultline will create the file (0600) on first run with a randomly generated passphrase and reuse it on subsequent starts. Keep the seal file outside the store directory and treat it like any other secret.
-2. `go run ./cmd/vaultline --addr 127.0.0.1:8428 secret put --name api-key --value "$(openssl rand -hex 16)"`.
+2. `go run ./cmd/vaultline --addr 127.0.0.1:8428 secret put --name api-key --value "$(openssl rand -hex 16)"`. If `--value/--file/--stdin` are omitted, the CLI masks an interactive prompt so you can type passwords safely.
 3. Fetch secrets with `go run ./cmd/vaultline --addr 127.0.0.1:8428 secret get --name api-key --out ./secret.txt`. The CLI is a thin REST client that requires a running daemon reachable via `--addr` and refuses to talk to non-loopback addresses unless you rebuild it with explicit overrides. Secret names must be lowercase with `.` or `-` separators (e.g., `infra.db-password`).
-4. Inspect stored keys with `go run ./cmd/vaultline --addr 127.0.0.1:8428 secrets list` (add `--output json` for machine-readable output).
+4. Inspect stored keys with `go run ./cmd/vaultline --addr 127.0.0.1:8428 secrets list` (add `--output json` for machine-readable output). You can use `vaultline secrets set/get/delete` as aliases for the `secret` command group.
 
 ## Container image
 - Build and run with Docker Compose: `VAULTLINE_PASSPHRASE=my-pass docker compose up --build`. Data persists under `./data/`.

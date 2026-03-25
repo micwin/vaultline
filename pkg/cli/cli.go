@@ -217,7 +217,7 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 	name := fs.String("name", "", "secret identifier (lowercase letters, dot, dash)")
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")
-	useStdin := fs.Bool("stdin", false, "read secret from stdin")
+	useStdin := fs.Bool("stdin", false, "read secret from stdin (mask prompt when running interactively)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -229,13 +229,7 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 		return err
 	}
 	if len(data) == 0 {
-		if !term.IsTerminal(int(syscall.Stdin)) {
-			return fmt.Errorf("provide a secret via --value, --file, or --stdin")
-		}
-		data, err = promptSecretValue()
-		if err != nil {
-			return err
-		}
+		return fmt.Errorf("provide a secret via --value, --file, or --stdin")
 	}
 	req := api.SecretRequest{Value: base64.StdEncoding.EncodeToString(data)}
 	payload, err := json.Marshal(req)
@@ -370,6 +364,15 @@ func secretsList(baseURL, outputFmt string, out io.Writer) error {
 func readSecretInput(literal, filePath string, stdin bool) ([]byte, error) {
 	switch {
 	case stdin:
+		if term.IsTerminal(int(syscall.Stdin)) {
+			fmt.Print("Secret value: ")
+			bytesValue, err := term.ReadPassword(int(syscall.Stdin))
+			fmt.Println()
+			if err != nil {
+				return nil, err
+			}
+			return []byte(strings.TrimSpace(string(bytesValue))), nil
+		}
 		return io.ReadAll(os.Stdin)
 	case filePath != "":
 		return os.ReadFile(filePath)

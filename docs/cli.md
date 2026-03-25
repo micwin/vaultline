@@ -34,7 +34,7 @@ infra.db-password
 
 ## Secret commands
 Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `app.payments.api-key`). The CLI simply proxies to the REST API:
-- `secret put --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked)
+- `secret put --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked). Keys can also be supplied positionally before/after flags: `vaultline secret put api-key --value ...`.
 - `secret get --name <key> [--out path] [--output raw|json]`
 - `secret delete --name <key>`
 - `secrets list [--output json]` — lists stored keys (text output by default)

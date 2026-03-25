@@ -213,20 +213,25 @@ func runSecrets(baseURL string, args []string, outputFmt string, out io.Writer) 
 }
 
 func secretPut(baseURL string, args []string, out io.Writer) error {
+	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--value": true, "--file": true, "--name": true})
 	fs := flag.NewFlagSet("secret put", flag.ContinueOnError)
 	name := fs.String("name", "", "secret identifier (lowercase letters, dot, dash)")
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")
 	useStdin := fs.Bool("stdin", false, "read secret from stdin (mask prompt when running interactively)")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 	key := strings.TrimSpace(*name)
 	if key == "" {
-		if fs.NArg() < 1 {
+		switch {
+		case keyArg != "":
+			key = keyArg
+		case fs.NArg() > 0:
+			key = fs.Arg(0)
+		default:
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
-		key = fs.Arg(0)
 	}
 	data, err := readSecretInput(*value, *filePath, *useStdin)
 	if err != nil {
@@ -264,20 +269,25 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 }
 
 func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) error {
+	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--out": true, "--name": true})
 	fs := flag.NewFlagSet("secret get", flag.ContinueOnError)
 	name := fs.String("name", "", "secret identifier")
 	outputPath := fs.String("out", "", "write secret to file (default stdout)")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 	key := strings.TrimSpace(*name)
 	if key == "" {
-		if fs.NArg() < 1 {
+		switch {
+		case keyArg != "":
+			key = keyArg
+		case fs.NArg() > 0:
+			key = fs.Arg(0)
+		default:
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
-		key = fs.Arg(0)
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
@@ -310,17 +320,22 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 }
 
 func secretDelete(baseURL string, args []string, out io.Writer) error {
+	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--name": true})
 	fs := flag.NewFlagSet("secret delete", flag.ContinueOnError)
 	name := fs.String("name", "", "secret identifier")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
 	key := strings.TrimSpace(*name)
 	if key == "" {
-		if fs.NArg() < 1 {
+		switch {
+		case keyArg != "":
+			key = keyArg
+		case fs.NArg() > 0:
+			key = fs.Arg(0)
+		default:
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
-		key = fs.Arg(0)
 	}
 	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
@@ -405,6 +420,42 @@ func promptSecretValue() ([]byte, error) {
 		return nil, fmt.Errorf("empty secret value")
 	}
 	return []byte(value), nil
+}
+
+func splitKeyArg(args []string, valueFlags map[string]bool) (string, []string) {
+	if valueFlags == nil {
+		valueFlags = map[string]bool{}
+	}
+	key := ""
+	filtered := make([]string, 0, len(args))
+	expectValue := false
+	for _, arg := range args {
+		flagName := arg
+		if expectValue {
+			filtered = append(filtered, arg)
+			expectValue = false
+			continue
+		}
+		if strings.HasPrefix(flagName, "--") {
+			parts := strings.SplitN(flagName, "=", 2)
+			flagName = parts[0]
+			filtered = append(filtered, arg)
+			if valueFlags[flagName] && len(parts) == 1 {
+				expectValue = true
+			}
+			continue
+		}
+		if strings.HasPrefix(flagName, "-") {
+			filtered = append(filtered, arg)
+			continue
+		}
+		if key == "" {
+			key = arg
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return key, filtered
 }
 
 func readPassphrase() (string, error) {

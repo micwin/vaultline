@@ -33,6 +33,13 @@ Returns `{ "value": "base64", "version": "hex" }`. `404 NOT_FOUND` if the key is
 ## `DELETE /secrets/{name}`
 Deletes the secret. Returns `204 No Content` on success.
 
+## `GET /secrets`
+Lists keys. Response:
+```json
+{ "keys": ["infra.db-password", "app.api-key"] }
+```
+Returns `409 SEALED` if the daemon is locked.
+
 ## Errors
 Errors follow this shape:
 ```

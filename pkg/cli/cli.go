@@ -88,6 +88,8 @@ func Run(args []string, out io.Writer) error {
 		return runDaemonStop(baseURL, out)
 	case "secret":
 		return runSecret(baseURL, remaining[1:], *output, out)
+	case "secrets":
+		return runSecrets(baseURL, remaining[1:], *output, out)
 	default:
 		return fmt.Errorf("unknown command %q", remaining[0])
 	}
@@ -188,6 +190,18 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return secretDelete(baseURL, args[1:], out)
 	default:
 		return fmt.Errorf("unknown secret subcommand %q", args[0])
+	}
+}
+
+func runSecrets(baseURL string, args []string, outputFmt string, out io.Writer) error {
+	if len(args) == 0 {
+		return errors.New("secrets command requires subcommand")
+	}
+	switch args[0] {
+	case "list":
+		return secretsList(baseURL, outputFmt, out)
+	default:
+		return fmt.Errorf("unknown secrets subcommand %q", args[0])
 	}
 }
 
@@ -304,6 +318,39 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 		return fmt.Errorf("delete failed: %s", body)
 	}
 	fmt.Fprintln(out, "secret removed")
+	return nil
+}
+
+func secretsList(baseURL, outputFmt string, out io.Writer) error {
+	resp, err := httpClient.Get(baseURL + "/api/v1/secrets")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("list failed: %s", string(body))
+	}
+	if outputFmt == "json" {
+		fmt.Fprintln(out, string(body))
+		return nil
+	}
+	var payload struct {
+		Keys []string `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return err
+	}
+	if len(payload.Keys) == 0 {
+		fmt.Fprintln(out, "(no secrets)")
+		return nil
+	}
+	for _, key := range payload.Keys {
+		fmt.Fprintln(out, key)
+	}
 	return nil
 }
 

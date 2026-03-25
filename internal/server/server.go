@@ -35,6 +35,7 @@ func New(store *storage.Store, version string) *Server {
 	s.router.Post("/api/v1/seal", s.handleSeal)
 	s.router.Post("/api/v1/unseal", s.handleUnseal)
 	s.router.Post("/api/v1/shutdown", s.handleShutdown)
+	s.router.Get("/api/v1/secrets", s.handleListSecrets)
 	s.router.Get("/api/v1/secrets/{name}", s.handleGetSecret)
 	s.router.Put("/api/v1/secrets/{name}", s.handlePutSecret)
 	s.router.Delete("/api/v1/secrets/{name}", s.handleDeleteSecret)
@@ -133,6 +134,15 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, api.VersionResponse{Version: version})
+}
+
+func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) {
+	keys, err := s.store.ListKeys(0)
+	if err != nil {
+		handleStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
 }
 
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {

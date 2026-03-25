@@ -26,6 +26,10 @@ abcd1234
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
       secret delete --name infra.db-password
 secret removed
+
+$ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
+      secrets list
+infra.db-password
 ```
 
 ## Secret commands
@@ -33,6 +37,7 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `a
 - `secret put --name <key> [--value|--file|--stdin]`
 - `secret get --name <key> [--out path] [--output raw|json]`
 - `secret delete --name <key>`
+- `secrets list [--output json]` — lists stored keys (text output by default)
 
 ## Diagnostics
 - `vaultline health` — prints sealed state, status, and version

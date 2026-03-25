@@ -35,12 +35,12 @@ func usageText() string {
       unseal                     Prompt for passphrase and unlock the daemon
       seal                       Reseal the daemon
       daemon-stop                Ask the daemon to shut down
-      secret put|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
+      secret set|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
 
 Examples:
   vaultline daemon --store-dir ./store
   vaultline --addr 127.0.0.1:8428 health
-  vaultline --addr 127.0.0.1:8428 secret put --name app.api-key --stdin
+  vaultline --addr 127.0.0.1:8428 secret set --name app.api-key --stdin
 `
 }
 
@@ -180,8 +180,8 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return errors.New("secret command requires subcommand")
 	}
 	switch args[0] {
-	case "put":
-		return secretPut(baseURL, args[1:], out)
+	case "set":
+		return secretSet(baseURL, args[1:], out)
 	case "get":
 		return secretGet(baseURL, args[1:], outputFmt, out)
 	case "delete":
@@ -193,9 +193,9 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 	}
 }
 
-func secretPut(baseURL string, args []string, out io.Writer) error {
+func secretSet(baseURL string, args []string, out io.Writer) error {
 	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--value": true, "--file": true, "--name": true})
-	fs := flag.NewFlagSet("secret put", flag.ContinueOnError)
+	fs := flag.NewFlagSet("secret set", flag.ContinueOnError)
 	name := fs.String("name", "", "secret identifier (lowercase letters, dot, dash)")
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")

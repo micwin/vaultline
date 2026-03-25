@@ -31,7 +31,7 @@ trap 'rm -f "${VALUE_FILE}"' EXIT
 
 SECRET_VALUE="persist-$(date +%s%N)"
 
-echo "${SECRET_VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret put --name "${SECRET_NAME}" --stdin >/dev/null
+echo "${SECRET_VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${SECRET_NAME}" --stdin >/dev/null
 
 "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret get --name "${SECRET_NAME}" --out "${VALUE_FILE}" >/dev/null
 if [[ "$(cat "${VALUE_FILE}")" != "${SECRET_VALUE}" ]]; then

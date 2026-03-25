@@ -34,7 +34,7 @@ fi
 VALID_NAME="alpha-beta.gamma"
 INVALID_NAME="Uppercase"
 
-cat "${SECRET_DATA}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret put --name "${VALID_NAME}" --stdin >/dev/null
+cat "${SECRET_DATA}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${VALID_NAME}" --stdin >/dev/null
 
 "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret get --name "${VALID_NAME}" --out "${VALUE_FILE}" >/dev/null
 if ! cmp -s "${VALUE_FILE}" "${SECRET_DATA}"; then
@@ -42,7 +42,7 @@ if ! cmp -s "${VALUE_FILE}" "${SECRET_DATA}"; then
   exit 1
 fi
 
-if "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret put --name "${INVALID_NAME}" --value bogus >/dev/null 2>&1; then
+if "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${INVALID_NAME}" --value bogus >/dev/null 2>&1; then
   echo "[040-key-validation] invalid name unexpectedly succeeded" >&2
   exit 1
 fi

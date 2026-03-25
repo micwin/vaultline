@@ -16,7 +16,7 @@ $ go run ./cmd/vaultline --addr 127.0.0.1:8428 health
 sealed=false status=ok
 
 $ echo "abcd1234" | go run ./cmd/vaultline --addr 127.0.0.1:8428 \
-      secret put --name infra.db-password --stdin
+      secret set --name infra.db-password --stdin
 secret stored (version=2fbd6a7a4e)
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
@@ -34,7 +34,7 @@ infra.db-password
 
 ## Secret commands
 Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `app.payments.api-key`). The CLI simply proxies to the REST API:
-- `secret put --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked). Keys can also be supplied positionally before/after flags: `vaultline secret put api-key --value ...`.
+- `secret set --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked). Keys can also be supplied positionally before/after flags: `vaultline secret set api-key --value ...`.
 - `secret get --name <key> [--out path] [--output raw|json]`
 - `secret delete --name <key>`
 - `secret list [--output json]` — lists stored keys (text output shows columns for key, last update timestamp, and version)

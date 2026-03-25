@@ -26,7 +26,7 @@ fi
 KEY_NAME="list.fire-test"
 VALUE="embers-${RANDOM}"
 
-echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret put --name "${KEY_NAME}" --stdin >/dev/null
+echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${KEY_NAME}" --stdin >/dev/null
 
 OUTPUT="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list)"
 if ! grep -q "${KEY_NAME}" <<<"${OUTPUT}"; then

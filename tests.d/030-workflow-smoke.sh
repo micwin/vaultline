@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TEST_ROOT="${SMOKEY_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+if [[ "$(basename "${TEST_ROOT}")" != "tests.d" ]]; then
+  TEST_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
+fi
+PROJECT_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
+STATE_DIR="${PROJECT_ROOT}/.testrun"
+ENV_FILE="${STATE_DIR}/env"
+PID_FILE="${STATE_DIR}/vaultlined.pid"
+LOG_FILE="${STATE_DIR}/vaultlined.log"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "[030-workflow] state file missing (${ENV_FILE})" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+
+ADDR="${VAULTLINE_TEST_ADDR:-127.0.0.1:19428}"
+SECRET_NAME="restart-secret"
+SECRET_NS="restart"
+VALUE_FILE="$(mktemp "${STATE_DIR}/persist.XXXX")"
+trap 'rm -f "${VALUE_FILE}"' EXIT
+
+SECRET_VALUE="persist-$(date +%s%N)"
+
+echo "${SECRET_VALUE}" | go run ./cmd/vaultline --addr "${ADDR}" secret put --space default --namespace "${SECRET_NS}" --name "${SECRET_NAME}" --stdin >/dev/null
+
+go run ./cmd/vaultline --addr "${ADDR}" secret get --space default --namespace "${SECRET_NS}" --name "${SECRET_NAME}" --out "${VALUE_FILE}" >/dev/null
+if [[ "$(cat "${VALUE_FILE}")" != "${SECRET_VALUE}" ]]; then
+  echo "[030-workflow] mismatch before restart" >&2
+  exit 1
+fi
+
+echo "[030-workflow] restarting daemon"
+OLD_PID="${VAULTLINE_TEST_PID:-}"
+if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" >/dev/null 2>&1; then
+  kill "${OLD_PID}" >/dev/null 2>&1 || true
+  wait "${OLD_PID}" >/dev/null 2>&1 || true
+fi
+
+VAULTLINE_PASSPHRASE="${VAULTLINE_TEST_PASS}" go run ./cmd/vaultline daemon --addr "${ADDR}" --store-dir "${VAULTLINE_TEST_STORE}" >>"${LOG_FILE}" 2>&1 &
+NEW_PID=$!
+echo "${NEW_PID}" > "${PID_FILE}"
+cat > "${ENV_FILE}" <<EOF_ENV
+VAULTLINE_TEST_ADDR=${ADDR}
+VAULTLINE_TEST_PASS=${VAULTLINE_TEST_PASS}
+VAULTLINE_TEST_STORE=${VAULTLINE_TEST_STORE}
+VAULTLINE_TEST_PID=${NEW_PID}
+VAULTLINE_TEST_LOG=${LOG_FILE}
+EOF_ENV
+
+READY=0
+for _ in $(seq 1 10); do
+  if go run ./cmd/vaultline --addr "${ADDR}" health >/dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  sleep 0.5
+done
+if [[ "${READY}" -ne 1 ]]; then
+  echo "[030-workflow] daemon failed to restart" >&2
+  exit 1
+fi
+
+go run ./cmd/vaultline --addr "${ADDR}" secret get --space default --namespace "${SECRET_NS}" --name "${SECRET_NAME}" --out "${VALUE_FILE}" >/dev/null
+if [[ "$(cat "${VALUE_FILE}")" != "${SECRET_VALUE}" ]]; then
+  echo "[030-workflow] mismatch after restart" >&2
+  exit 1
+fi
+
+echo "[030-workflow] ok"

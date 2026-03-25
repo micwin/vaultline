@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -e
+
+systemctl stop "vaultline@${SUDO_USER}.service" 2>/dev/null || true
+systemctl disable "vaultline@${SUDO_USER}.service" 2>/dev/null || true
+systemctl daemon-reload || true

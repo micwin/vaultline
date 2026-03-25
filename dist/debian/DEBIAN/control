@@ -1,0 +1,7 @@
+Package: vaultline
+Version: 0.2.7
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: vaultline
+Description: Vaultline secret store unified binary

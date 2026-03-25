@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  vaultline:
+    build: .
+    image: vaultline:dev
+    container_name: vaultline
+    environment:
+      - VAULTLINE_PASSPHRASE=${VAULTLINE_PASSPHRASE:?set vault passphrase}
+    volumes:
+      - ./data:/var/lib/vaultline
+    ports:
+      - "8428:8428"
+    restart: unless-stopped

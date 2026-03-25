@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -e
+
+if [ "$1" = "purge" ]; then
+  rm -rf /home/${SUDO_USER}/.local/share/vaultline /home/${SUDO_USER}/.config/vaultline
+fi

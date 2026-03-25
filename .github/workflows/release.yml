@@ -1,0 +1,55 @@
+name: Release vaultline
+
+on:
+  push:
+    branches:
+      - release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine version
+        id: vars
+        run: |
+          VERSION=$(grep 'const Version' pkg/version/version.go | awk -F'"' '{print $2}')
+          if [[ -z "${VERSION}" ]]; then
+            echo "Version not found" >&2
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build package
+        run: ./package-deb.sh "${{ steps.vars.outputs.version }}"
+
+      - name: Create git tag
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${VERSION} already exists"
+          else
+            git tag "v${VERSION}"
+            git push origin "v${VERSION}"
+          fi
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.vars.outputs.version }}
+          name: vaultline v${{ steps.vars.outputs.version }}
+          files: dist/vaultline_${{ steps.vars.outputs.version }}_amd64.deb
+          draft: false
+          prerelease: false

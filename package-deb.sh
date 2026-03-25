@@ -4,13 +4,32 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
 PKG_DIR="${DIST_DIR}/debian"
-mkdir -p "${DIST_DIR}"
 
-VERSION=$(grep 'const Version' "${ROOT_DIR}/pkg/version/version.go" | awk -F'"' '{print $2}')
-IFS='.' read -r major minor patch <<<"${VERSION}"
-patch=$((patch+1))
-NEW_VERSION="${major}.${minor}.${patch}"
-sed -i "s/const Version = \"${VERSION}\"/const Version = \"${NEW_VERSION}\"/" "${ROOT_DIR}/pkg/version/version.go"
+CURRENT_VERSION=$(grep 'const Version' "${ROOT_DIR}/pkg/version/version.go" | awk -F'"' '{print $2}')
+if [[ -z "${CURRENT_VERSION}" ]]; then
+  echo "Unable to read version from pkg/version/version.go" >&2
+  exit 1
+fi
+
+if [[ $# -gt 0 ]]; then
+  NEW_VERSION="$1"
+else
+  IFS='.' read -r major minor patch <<<"${CURRENT_VERSION}"
+  patch=$((patch + 1))
+  NEW_VERSION="${major}.${minor}.${patch}"
+fi
+
+if [[ ! "${NEW_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Invalid version: ${NEW_VERSION}" >&2
+  exit 1
+fi
+
+if [[ "${NEW_VERSION}" != "${CURRENT_VERSION}" ]]; then
+  sed -i "s/const Version = \"${CURRENT_VERSION}\"/const Version = \"${NEW_VERSION}\"/" "${ROOT_DIR}/pkg/version/version.go"
+fi
+
+rm -rf "${DIST_DIR}"
+mkdir -p "${DIST_DIR}"
 
 cd "${ROOT_DIR}"
 go test ./...
@@ -36,8 +55,11 @@ Description: Vaultline secret store unified binary
 CTRL
 
 cd "${PKG_DIR}"
-find usr -type f -exec chmod 755 {} +
+find usr -type d -exec chmod 755 {} +
+chmod 755 usr/local/bin/vaultline
+chmod 644 usr/share/doc/vaultline/README
+
 cd "${DIST_DIR}"
-dpkg-deb --build debian "vaultline-${NEW_VERSION}.deb"
+dpkg-deb --build debian "vaultline_${NEW_VERSION}_amd64.deb"
 
 echo "Built vaultline ${NEW_VERSION}"

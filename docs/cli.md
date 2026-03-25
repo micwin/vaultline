@@ -38,6 +38,7 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `a
 - `secret get --name <key> [--out path] [--output raw|json]`
 - `secret delete --name <key>`
 - `secrets list [--output json]` — lists stored keys (text output by default)
+- `secrets set|get|delete …` — aliases for the `secret` commands
 
 ## Diagnostics
 - `vaultline health` — prints sealed state, status, and version

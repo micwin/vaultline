@@ -36,6 +36,7 @@ func usageText() string {
       seal                       Reseal the daemon
       daemon-stop                Ask the daemon to shut down
       secret put|get|delete      Manage secrets (keys use lowercase letters plus . and -)
+      secrets list|set|get|delete Same operations via the secrets namespace
 
 Examples:
   vaultline daemon --store-dir ./store
@@ -200,6 +201,12 @@ func runSecrets(baseURL string, args []string, outputFmt string, out io.Writer) 
 	switch args[0] {
 	case "list":
 		return secretsList(baseURL, outputFmt, out)
+	case "set":
+		return secretPut(baseURL, args[1:], out)
+	case "get":
+		return secretGet(baseURL, args[1:], outputFmt, out)
+	case "delete":
+		return secretDelete(baseURL, args[1:], out)
 	default:
 		return fmt.Errorf("unknown secrets subcommand %q", args[0])
 	}

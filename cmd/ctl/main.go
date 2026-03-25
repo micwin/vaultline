@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/micwin/mono-repo/vaultline/pkg/cli"
+	"github.com/micwin/vaultline/pkg/cli"
 )
 
 func main() {

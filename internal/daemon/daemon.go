@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/micwin/mono-repo/vaultline/internal/server"
-	"github.com/micwin/mono-repo/vaultline/pkg/storage"
+	"github.com/micwin/vaultline/internal/server"
+	"github.com/micwin/vaultline/pkg/storage"
 )
 
 // Run starts the vaultline daemon on the provided addr/storeDir and blocks until shutdown.

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/micwin/mono-repo/vaultline/pkg/storage"
+	"github.com/micwin/vaultline/pkg/storage"
 )
 
 func TestStoreRoundTrip(t *testing.T) {

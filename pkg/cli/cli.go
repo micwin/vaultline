@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/micwin/mono-repo/vaultline/pkg/api"
-	"github.com/micwin/mono-repo/vaultline/pkg/version"
+	"github.com/micwin/vaultline/pkg/api"
+	"github.com/micwin/vaultline/pkg/version"
 )
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}

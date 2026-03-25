@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/micwin/mono-repo/vaultline/internal/daemon"
-	"github.com/micwin/mono-repo/vaultline/pkg/cli"
-	"github.com/micwin/mono-repo/vaultline/pkg/version"
+	"github.com/micwin/vaultline/internal/daemon"
+	"github.com/micwin/vaultline/pkg/cli"
+	"github.com/micwin/vaultline/pkg/version"
 )
 
 func main() {

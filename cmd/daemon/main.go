@@ -4,8 +4,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/micwin/mono-repo/vaultline/internal/daemon"
-	"github.com/micwin/mono-repo/vaultline/pkg/version"
+	"github.com/micwin/vaultline/internal/daemon"
+	"github.com/micwin/vaultline/pkg/version"
 )
 
 func main() {

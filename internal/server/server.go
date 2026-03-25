@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/micwin/mono-repo/vaultline/pkg/api"
-	"github.com/micwin/mono-repo/vaultline/pkg/storage"
+	"github.com/micwin/vaultline/pkg/api"
+	"github.com/micwin/vaultline/pkg/storage"
 )
 
 // Server exposes the REST API for vaultline.

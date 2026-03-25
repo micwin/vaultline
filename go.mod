@@ -1,4 +1,4 @@
-module github.com/micwin/mono-repo/vaultline
+module github.com/micwin/vaultline
 
 go 1.25.0
 

@@ -373,18 +373,12 @@ func secretsList(baseURL, outputFmt string, out io.Writer) error {
 		return nil
 	}
 	var payload struct {
-		Keys []string `json:"keys"`
+		Keys []listEntry `json:"keys"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return err
 	}
-	if len(payload.Keys) == 0 {
-		fmt.Fprintln(out, "(no secrets)")
-		return nil
-	}
-	for _, key := range payload.Keys {
-		fmt.Fprintln(out, key)
-	}
+	printSecretTable(payload.Keys, out)
 	return nil
 }
 
@@ -456,6 +450,42 @@ func splitKeyArg(args []string, valueFlags map[string]bool) (string, []string) {
 		filtered = append(filtered, arg)
 	}
 	return key, filtered
+}
+
+type listEntry struct {
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func printSecretTable(entries []listEntry, out io.Writer) {
+	if len(entries) == 0 {
+		fmt.Fprintln(out, "(no secrets)")
+		return
+	}
+	nameW, timeW, verW := len("KEY"), len("UPDATED"), len("VERSION")
+	rows := make([][3]string, len(entries))
+	for i, entry := range entries {
+		updated := entry.UpdatedAt
+		if updated == "" {
+			updated = "-"
+		}
+		rows[i] = [3]string{entry.Name, updated, entry.Version}
+		if len(entry.Name) > nameW {
+			nameW = len(entry.Name)
+		}
+		if len(updated) > timeW {
+			timeW = len(updated)
+		}
+		if len(entry.Version) > verW {
+			verW = len(entry.Version)
+		}
+	}
+	fmt.Fprintf(out, "%-*s  %-*s  %-*s\n", nameW, "KEY", timeW, "UPDATED", verW, "VERSION")
+	fmt.Fprintf(out, "%s  %s  %s\n", strings.Repeat("-", nameW), strings.Repeat("-", timeW), strings.Repeat("-", verW))
+	for _, row := range rows {
+		fmt.Fprintf(out, "%-*s  %-*s  %-*s\n", nameW, row[0], timeW, row[1], verW, row[2])
+	}
 }
 
 func readPassphrase() (string, error) {

@@ -37,7 +37,7 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `a
 - `secret put --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked). Keys can also be supplied positionally before/after flags: `vaultline secret put api-key --value ...`.
 - `secret get --name <key> [--out path] [--output raw|json]`
 - `secret delete --name <key>`
-- `secrets list [--output json]` — lists stored keys (text output by default)
+- `secrets list [--output json]` — lists stored keys (text output shows columns for key, last update timestamp, and version)
 - `secrets set|get|delete …` — aliases for the `secret` commands
 
 ## Diagnostics

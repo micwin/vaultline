@@ -34,9 +34,17 @@ Returns `{ "value": "base64", "version": "hex" }`. `404 NOT_FOUND` if the key is
 Deletes the secret. Returns `204 No Content` on success.
 
 ## `GET /secrets`
-Lists keys. Response:
+Lists keys with metadata. Response:
 ```json
-{ "keys": ["infra.db-password", "app.api-key"] }
+{
+  "keys": [
+    {
+      "name": "infra.db-password",
+      "version": "abc123",
+      "updated_at": "2026-03-25T15:37:01Z"
+    }
+  ]
+}
 ```
 Returns `409 SEALED` if the daemon is locked.
 

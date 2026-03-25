@@ -28,7 +28,7 @@ VALUE="embers-${RANDOM}"
 
 echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret put --name "${KEY_NAME}" --stdin >/dev/null
 
-OUTPUT="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secrets list)"
+OUTPUT="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list)"
 if ! grep -q "${KEY_NAME}" <<<"${OUTPUT}"; then
   echo "[050-secrets-list] ${KEY_NAME} missing in output" >&2
   exit 1

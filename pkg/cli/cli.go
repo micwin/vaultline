@@ -35,8 +35,7 @@ func usageText() string {
       unseal                     Prompt for passphrase and unlock the daemon
       seal                       Reseal the daemon
       daemon-stop                Ask the daemon to shut down
-      secret put|get|delete      Manage secrets (keys use lowercase letters plus . and -)
-      secrets list|set|get|delete Same operations via the secrets namespace
+      secret put|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
 
 Examples:
   vaultline daemon --store-dir ./store
@@ -89,8 +88,6 @@ func Run(args []string, out io.Writer) error {
 		return runDaemonStop(baseURL, out)
 	case "secret":
 		return runSecret(baseURL, remaining[1:], *output, out)
-	case "secrets":
-		return runSecrets(baseURL, remaining[1:], *output, out)
 	default:
 		return fmt.Errorf("unknown command %q", remaining[0])
 	}
@@ -189,26 +186,10 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return secretGet(baseURL, args[1:], outputFmt, out)
 	case "delete":
 		return secretDelete(baseURL, args[1:], out)
+	case "list":
+		return secretList(baseURL, outputFmt, out)
 	default:
 		return fmt.Errorf("unknown secret subcommand %q", args[0])
-	}
-}
-
-func runSecrets(baseURL string, args []string, outputFmt string, out io.Writer) error {
-	if len(args) == 0 {
-		return errors.New("secrets command requires subcommand")
-	}
-	switch args[0] {
-	case "list":
-		return secretsList(baseURL, outputFmt, out)
-	case "set":
-		return secretPut(baseURL, args[1:], out)
-	case "get":
-		return secretGet(baseURL, args[1:], outputFmt, out)
-	case "delete":
-		return secretDelete(baseURL, args[1:], out)
-	default:
-		return fmt.Errorf("unknown secrets subcommand %q", args[0])
 	}
 }
 
@@ -355,7 +336,7 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 	return nil
 }
 
-func secretsList(baseURL, outputFmt string, out io.Writer) error {
+func secretList(baseURL, outputFmt string, out io.Writer) error {
 	resp, err := httpClient.Get(baseURL + "/api/v1/secrets")
 	if err != nil {
 		return err

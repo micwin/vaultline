@@ -221,8 +221,12 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
+	key := strings.TrimSpace(*name)
+	if key == "" {
+		if fs.NArg() < 1 {
+			return fmt.Errorf("provide a key via --name or as an argument")
+		}
+		key = fs.Arg(0)
 	}
 	data, err := readSecretInput(*value, *filePath, *useStdin)
 	if err != nil {
@@ -236,7 +240,7 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
 	httpReq, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -266,8 +270,12 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
+	key := strings.TrimSpace(*name)
+	if key == "" {
+		if fs.NArg() < 1 {
+			return fmt.Errorf("provide a key via --name or as an argument")
+		}
+		key = fs.Arg(0)
 	}
 	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
 	resp, err := httpClient.Get(url)
@@ -307,10 +315,14 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
+	key := strings.TrimSpace(*name)
+	if key == "" {
+		if fs.NArg() < 1 {
+			return fmt.Errorf("provide a key via --name or as an argument")
+		}
+		key = fs.Arg(0)
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err

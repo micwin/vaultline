@@ -229,6 +229,9 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 		return err
 	}
 	if len(data) == 0 {
+		if !term.IsTerminal(int(syscall.Stdin)) {
+			return fmt.Errorf("provide a secret via --value, --file, or --stdin")
+		}
 		data, err = promptSecretValue()
 		if err != nil {
 			return err

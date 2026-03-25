@@ -18,9 +18,14 @@ fi
 source "${ENV_FILE}"
 
 ADDR="${VAULTLINE_TEST_ADDR:-127.0.0.1:19428}"
+if [[ -n "${VAULTLINE_TEST_BIN:-}" ]]; then
+  VAULTLINE_CLI=("${VAULTLINE_TEST_BIN}")
+else
+  VAULTLINE_CLI=(go run ./cmd/vaultline)
+fi
 
 echo "[020-api-health] checking CLI health output"
-CLI_OUTPUT="$(go run ./cmd/vaultline --addr "${ADDR}" health)"
+CLI_OUTPUT="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" health)"
 echo "[020-api-health] cli: ${CLI_OUTPUT}"
 
 echo "[020-api-health] querying REST health endpoint"

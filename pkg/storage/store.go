@@ -29,7 +29,7 @@ var (
 	// ErrSecretNotFound is returned when the requested secret file is missing.
 	ErrSecretNotFound = errors.New("vaultline: secret not found")
 
-	segmentPattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	keyPattern = regexp.MustCompile(`^[a-z.-]+$`)
 )
 
 // Store persists encrypted secrets on disk. Each secret is stored in its own file
@@ -107,8 +107,8 @@ func (s *Store) Unseal(passphrase string) error {
 }
 
 // Put writes (or overwrites) a secret.
-func (s *Store) Put(space, namespace, name string, data []byte) (string, error) {
-	key, err := s.deriveKey(space, namespace, name)
+func (s *Store) Put(name string, data []byte) (string, error) {
+	key, err := s.deriveKey(name)
 	if err != nil {
 		return "", err
 	}
@@ -132,7 +132,7 @@ func (s *Store) Put(space, namespace, name string, data []byte) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("marshal envelope: %w", err)
 	}
-	path, err := s.secretPath(space, namespace, name)
+	path, err := s.secretPath(name)
 	if err != nil {
 		return "", err
 	}
@@ -146,12 +146,12 @@ func (s *Store) Put(space, namespace, name string, data []byte) (string, error) 
 }
 
 // Get decrypts a stored secret.
-func (s *Store) Get(space, namespace, name string) (*Secret, error) {
-	key, err := s.deriveKey(space, namespace, name)
+func (s *Store) Get(name string) (*Secret, error) {
+	key, err := s.deriveKey(name)
 	if err != nil {
 		return nil, err
 	}
-	path, err := s.secretPath(space, namespace, name)
+	path, err := s.secretPath(name)
 	if err != nil {
 		return nil, err
 	}
@@ -186,11 +186,11 @@ func (s *Store) Get(space, namespace, name string) (*Secret, error) {
 }
 
 // Delete removes the secret file.
-func (s *Store) Delete(space, namespace, name string) error {
+func (s *Store) Delete(name string) error {
 	if s.Sealed() {
 		return ErrSealed
 	}
-	path, err := s.secretPath(space, namespace, name)
+	path, err := s.secretPath(name)
 	if err != nil {
 		return err
 	}
@@ -203,16 +203,16 @@ func (s *Store) Delete(space, namespace, name string) error {
 	return nil
 }
 
-func (s *Store) secretPath(space, namespace, name string) (string, error) {
-	space, namespace, name, err := normalizeSegments(space, namespace, name)
+func (s *Store) secretPath(name string) (string, error) {
+	key, err := normalizeKey(name)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(s.root, "spaces", space, namespace, name+".vlx"), nil
+	return filepath.Join(s.root, "secrets", key+".vlx"), nil
 }
 
-func (s *Store) deriveKey(space, namespace, name string) ([]byte, error) {
-	space, namespace, name, err := normalizeSegments(space, namespace, name)
+func (s *Store) deriveKey(name string) ([]byte, error) {
+	keyName, err := normalizeKey(name)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func (s *Store) deriveKey(space, namespace, name string) ([]byte, error) {
 	if s.sealed || s.masterKey == nil {
 		return nil, ErrSealed
 	}
-	data := []byte(fmt.Sprintf("%s\x00%s\x00%s", space, namespace, name))
+	data := []byte(keyName)
 	mac := hmac.New(sha256.New, s.masterKey)
 	mac.Write(data)
 	sum := mac.Sum(nil)
@@ -230,18 +230,14 @@ func (s *Store) deriveKey(space, namespace, name string) ([]byte, error) {
 	return key, nil
 }
 
-func normalizeSegments(space, namespace, name string) (string, string, string, error) {
-	var err error
-	if space, err = sanitizeSegment(space); err != nil {
-		return "", "", "", err
+func normalizeKey(value string) (string, error) {
+	if value == "" {
+		return "", errors.New("vaultline: empty identifier")
 	}
-	if namespace, err = sanitizeSegment(namespace); err != nil {
-		return "", "", "", err
+	if !keyPattern.MatchString(value) {
+		return "", fmt.Errorf("vaultline: invalid identifier %q (only lowercase letters, dot, and dash allowed)", value)
 	}
-	if name, err = sanitizeSegment(name); err != nil {
-		return "", "", "", err
-	}
-	return space, namespace, name, nil
+	return value, nil
 }
 
 func loadOrCreateSalt(path string) ([]byte, error) {
@@ -263,16 +259,6 @@ func loadOrCreateSalt(path string) ([]byte, error) {
 		return nil, fmt.Errorf("write master salt: %w", err)
 	}
 	return salt, nil
-}
-
-func sanitizeSegment(value string) (string, error) {
-	if value == "" {
-		return "", errors.New("vaultline: empty identifier")
-	}
-	if !segmentPattern.MatchString(value) {
-		return "", fmt.Errorf("vaultline: invalid identifier %q", value)
-	}
-	return value, nil
 }
 
 func deriveVersion(nonce, ciphertext []byte) string {

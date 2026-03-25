@@ -33,12 +33,14 @@ func usageText() string {
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
       unseal                     Prompt for passphrase and unlock the daemon
-      secret put|get|delete      Manage secrets via the REST API
+      seal                       Reseal the daemon
+      daemon-stop                Ask the daemon to shut down
+      secret put|get|delete      Manage secrets (keys use lowercase letters plus . and -)
 
 Examples:
   vaultline daemon --store-dir ./store
   vaultline --addr 127.0.0.1:8428 health
-  vaultline --addr 127.0.0.1:8428 secret put --space default --namespace app --name api-key --stdin
+  vaultline --addr 127.0.0.1:8428 secret put --name app.api-key --stdin
 `
 }
 
@@ -82,6 +84,8 @@ func Run(args []string, out io.Writer) error {
 		return runUnseal(baseURL, out)
 	case "seal":
 		return runSeal(baseURL, out)
+	case "daemon-stop":
+		return runDaemonStop(baseURL, out)
 	case "secret":
 		return runSecret(baseURL, remaining[1:], *output, out)
 	default:
@@ -153,6 +157,24 @@ func runSeal(baseURL string, out io.Writer) error {
 	return nil
 }
 
+func runDaemonStop(baseURL string, out io.Writer) error {
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/shutdown", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("shutdown failed: %s", body)
+	}
+	fmt.Fprintln(out, "vaultline shutdown requested")
+	return nil
+}
+
 func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("secret command requires subcommand")
@@ -171,9 +193,7 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 
 func secretPut(baseURL string, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("secret put", flag.ContinueOnError)
-	space := fs.String("space", "default", "space name")
-	namespace := fs.String("namespace", "default", "namespace")
-	name := fs.String("name", "", "secret identifier")
+	name := fs.String("name", "", "secret identifier (lowercase letters, dot, dash)")
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")
 	useStdin := fs.Bool("stdin", false, "read secret from stdin")
@@ -195,7 +215,7 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/api/v1/spaces/%s/namespaces/%s/secrets/%s", baseURL, *space, *namespace, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
 	httpReq, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -220,8 +240,6 @@ func secretPut(baseURL string, args []string, out io.Writer) error {
 
 func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) error {
 	fs := flag.NewFlagSet("secret get", flag.ContinueOnError)
-	space := fs.String("space", "default", "space name")
-	namespace := fs.String("namespace", "default", "namespace")
 	name := fs.String("name", "", "secret identifier")
 	outputPath := fs.String("out", "", "write secret to file (default stdout)")
 	if err := fs.Parse(args); err != nil {
@@ -230,7 +248,7 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 	if *name == "" {
 		return fmt.Errorf("--name is required")
 	}
-	url := fmt.Sprintf("%s/api/v1/spaces/%s/namespaces/%s/secrets/%s", baseURL, *space, *namespace, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
@@ -264,8 +282,6 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 
 func secretDelete(baseURL string, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("secret delete", flag.ContinueOnError)
-	space := fs.String("space", "default", "space name")
-	namespace := fs.String("namespace", "default", "namespace")
 	name := fs.String("name", "", "secret identifier")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -273,7 +289,7 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 	if *name == "" {
 		return fmt.Errorf("--name is required")
 	}
-	url := fmt.Sprintf("%s/api/v1/spaces/%s/namespaces/%s/secrets/%s", baseURL, *space, *namespace, *name)
+	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, *name)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err

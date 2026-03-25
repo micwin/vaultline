@@ -1,95 +1,45 @@
-# vaultline REST API
+# REST API
 
-All endpoints live under `/api/v1`. Requests require HTTPS in production; for local development the daemon can run on `127.0.0.1` without TLS.
+Base URL: `http://127.0.0.1:8428/api/v1`
 
-## Authentication & headers
-- `X-Vaultline-Session: <token>` — issued after `/auth/unseal` succeeds. Tokens expire after 24h or on daemon restart.
-- `X-Vaultline-TOTP: 123456` — optional but required when the target subspace or secret enforces MFA.
-- `If-Match: <version>` — optimistic locking for secret updates.
+vaultline exposes a minimal JSON API. All routes require the daemon to be unsealed first.
 
-## Core endpoints
-
-### POST /auth/unseal
-Unlocks the daemon.
-```json
-{
-  "passphrase": "...",      // required main passphrase or VAULTLINE_PASSPHRASE
-  "subspaces": {
-    "infra": "..."          // optional map of subspace-specific passphrases
-  }
-}
-```
-Responses:
-- 200: `{ "sealed": false, "token": "..." }`
-- 409: `{ "sealed": true, "missing_subspaces": ["infra"] }`
-
-### GET /health
-Returns sealed status and build metadata. Always 200.
+## `GET /health`
 ```json
 {
   "sealed": false,
-  "version": "0.1.0",
-  "uptime": 1234
+  "status": "ok",
+  "version": "0.1.8"
 }
 ```
 
-### GET /spaces
-Lists subspaces the session may access.
-```json
-{
-  "spaces": [
-    {"name": "default", "namespaces": ["app", "ops"], "totp": false},
-    {"name": "infra", "namespaces": [], "totp": true}
-  ]
-}
+## `POST /unseal`
 ```
-
-### POST /spaces
-Create subspace.
-```json
-{
-  "name": "contractors",
-  "passphrase": null,
-  "namespaces": ["read-only"],
-  "totp": true
-}
+{ "passphrase": "string" }
 ```
-- 201: `{ "name": "contractors" }`
-- 409: space exists.
+Unlocks the store using the provided passphrase. Returns `{ "sealed": false }` on success.
 
-### Secret CRUD
-`/spaces/{space}/namespaces/{ns}/secrets/{id}`
-- `GET` returns `{ "value": "base64...", "version": "abc123", "labels": {...} }`.
-- `PUT` accepts `{"value": "base64...", "labels": {...}, "ttl": 3600}`.
-- `DELETE` removes file; returns 204.
+## `POST /seal`
+Re-locks the store. Subsequent secret operations will fail with `409 SEALED` until `POST /unseal` runs again.
 
-### Export/import
-`POST /spaces/{space}/export`
-```json
-{
-  "namespaces": ["app"],
-  "selectors": {"env": "prod"}
-}
+## `PUT /secrets/{name}`
+- `name` must match `^[a-z.-]+$`
+- Body: `{ "value": "base64" }`
+- Response: `{ "version": "hex" }`
+
+## `GET /secrets/{name}`
+Returns `{ "value": "base64", "version": "hex" }`. `404 NOT_FOUND` if the key is missing.
+
+## `DELETE /secrets/{name}`
+Deletes the secret. Returns `204 No Content` on success.
+
+## Errors
+Errors follow this shape:
 ```
-- Response: `application/octet-stream` tarball.
-
-`POST /spaces/{space}/import?dry_run=true`
-- Body: tarball. Response summarises actions (created, updated, skipped).
-
-### TOTP
-- `POST /totp/enroll` → `{ "provisioning_uri": "otpauth://totp/..." }`
-- `POST /totp/verify` → `{ "valid": true }`
-- When binding to a subspace: `POST /spaces/{space}/totp/bind` with `"secret_id": "..."` referencing stored TOTP secret.
-
-## Error model
-Errors follow:
-```json
-{
-  "error": {
-    "code": "SECRET_NOT_FOUND",
-    "message": "...",
-    "details": {...}
-  }
-}
+{ "error": "CODE", "message": "human readable description" }
 ```
-Common codes: `SEALED`, `UNAUTHORIZED`, `TOTp_REQUIRED`, `CONFLICT`, `VALIDATION_FAILED`, `IMPORT_MISMATCH`.
+Common codes:
+- `SEALED` — daemon is locked (`409`)
+- `INVALID_IDENTIFIER` — key violated the naming rules (`400`)
+- `NOT_FOUND` — unknown key (`404`)
+- `STORE_ERROR` — unexpected failure (`500`)

@@ -20,11 +20,11 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err := store.Unseal("passphrase"); err != nil {
 		t.Fatalf("unseal: %v", err)
 	}
-	version, err := store.Put("default", "app", "api-key", []byte("top-secret"))
+	version, err := store.Put("app.api-key", []byte("top-secret"))
 	if err != nil {
 		t.Fatalf("put secret: %v", err)
 	}
-	secret, err := store.Get("default", "app", "api-key")
+	secret, err := store.Get("app.api-key")
 	if err != nil {
 		t.Fatalf("get secret: %v", err)
 	}
@@ -45,13 +45,13 @@ func TestStoreDelete(t *testing.T) {
 	if err := store.Unseal("passphrase"); err != nil {
 		t.Fatalf("unseal: %v", err)
 	}
-	if _, err := store.Put("default", "ops", "token", []byte("value")); err != nil {
+	if _, err := store.Put("ops.token", []byte("value")); err != nil {
 		t.Fatalf("put secret: %v", err)
 	}
-	if err := store.Delete("default", "ops", "token"); err != nil {
+	if err := store.Delete("ops.token"); err != nil {
 		t.Fatalf("delete secret: %v", err)
 	}
-	if _, err := store.Get("default", "ops", "token"); err == nil {
+	if _, err := store.Get("ops.token"); err == nil {
 		t.Fatalf("expected error after deletion")
 	}
 }
@@ -65,7 +65,7 @@ func TestStorePersistsSalt(t *testing.T) {
 	if err := store1.Unseal("passphrase"); err != nil {
 		t.Fatalf("unseal: %v", err)
 	}
-	if _, err := store1.Put("default", "ops", "token", []byte("value")); err != nil {
+	if _, err := store1.Put("ops.token", []byte("value")); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	store1.Seal()
@@ -77,14 +77,14 @@ func TestStorePersistsSalt(t *testing.T) {
 	if err := store2.Unseal("passphrase"); err != nil {
 		t.Fatalf("unseal second: %v", err)
 	}
-	secret, err := store2.Get("default", "ops", "token")
+	secret, err := store2.Get("ops.token")
 	if err != nil {
 		t.Fatalf("get secret: %v", err)
 	}
 	if string(secret.Data) != "value" {
 		t.Fatalf("unexpected payload after reopening: %s", string(secret.Data))
 	}
-	if _, err := os.Stat(filepath.Join(dir, "spaces", "default", "ops", "token.vlx")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "secrets", "ops.token.vlx")); err != nil {
 		t.Fatalf("secret file missing: %v", err)
 	}
 }

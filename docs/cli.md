@@ -1,59 +1,41 @@
-# vaultlinectl CLI
+# vaultline CLI
 
-`vaultlinectl` is the human-friendly interface to the vaultline daemon. It refuses to connect to non-loopback addresses unless `--unsafe-remote` is passed with `--i-know-the-risks`.
+`vaultline` is a localhost-only client for the vaultline daemon. It refuses to connect to non-loopback addresses unless rebuilt with custom flags, so keep the daemon on the same host.
 
 ## Global flags
-- `--addr 127.0.0.1:8428` — daemon address (default loopback).
-- `--token-file ~/.config/vaultline/session` — path storing session token.
-- `--output json|table|raw` — response formatting.
+- `--addr 127.0.0.1:8428` — daemon address (default loopback)
+- `--output json|text|raw` — formatting used by commands that print responses
 
-## Login & unlock
+## Example session
 ```
-$ vaultlinectl login
-Enter passphrase: ********
-Subspace infra passphrase (optional): ********
-Unsealed ✓
-```
-- Reads passphrase from TTY; respects `VAULTLINE_PASSPHRASE` for automation.
-- Stores session token locally with `0600` permissions.
+$ export VAULTLINE_PASSPHRASE=correct-horse
+$ go run ./cmd/vaultline daemon --store-dir .testrun/store
+vaultline listening on 127.0.0.1:8428
 
-## Secret commands
-```
-$ vaultlinectl secret put default app api-key \
-    --from-env API_KEY
+$ go run ./cmd/vaultline --addr 127.0.0.1:8428 health
+sealed=false status=ok
 
-$ vaultlinectl secret get default app api-key --output raw
+$ echo "abcd1234" | go run ./cmd/vaultline --addr 127.0.0.1:8428 \
+      secret put --name infra.db-password --stdin
+secret stored (version=2fbd6a7a4e)
+
+$ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
+      secret get --name infra.db-password --raw
 abcd1234
 
-$ cat .env | vaultlinectl secret put default app env --stdin
+$ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
+      secret delete --name infra.db-password
+secret removed
 ```
-- Supports `--labels env=prod,service=api`.
-- `--version <etag>` enables optimistic concurrency.
 
-## Space management
-```
-$ vaultlinectl space list
-NAME       NAMESPACES     TOTP
-default    app,ops        no
-infra      core           yes
-
-$ vaultlinectl space create contractors --totp --namespaces onboarding
-```
-- `space export <name> --namespaces app --selector env=prod > prod.tar`
-- `space import <name> --file prod.tar --rekey` (prompts for subspace passphrase if required).
-
-## MFA utilities
-```
-$ vaultlinectl totp enroll --label "vaultline infra"
-otpauth://totp/vaultline:infra?...secret=ABCDEF...
-
-$ vaultlinectl totp verify --code 123456
-Code valid (expires in 23s)
-```
-- CLI caches last successful TOTP for 30 seconds per session to limit prompts during scripting.
+## Secret commands
+Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `app.payments.api-key`). The CLI simply proxies to the REST API:
+- `secret put --name <key> [--value|--file|--stdin]`
+- `secret get --name <key> [--out path] [--output raw|json]`
+- `secret delete --name <key>`
 
 ## Diagnostics
-- `vaultlinectl status` — prints sealed state, version, unlocked spaces.
-- `vaultlinectl doctor` — checks file permissions, git cleanliness, and ensures `.gitignore` excludes temp files.
+- `vaultline health` — prints sealed state, status, and version
+- `curl http://127.0.0.1:8428/` — returns a tiny HTML dashboard that lists a sample of stored keys when unsealed
 
-All commands exit non-zero on failure and echo REST error codes for scripting.
+The CLI exits non-zero when the daemon is sealed, missing, or rejects a request (e.g. invalid key names), which makes it safe to script.

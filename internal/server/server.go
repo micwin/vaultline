@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -32,11 +34,10 @@ func New(store *storage.Store, version string) *Server {
 	s.router.Get("/api/v1/health", s.handleHealth)
 	s.router.Post("/api/v1/seal", s.handleSeal)
 	s.router.Post("/api/v1/unseal", s.handleUnseal)
-	s.router.Route("/api/v1/spaces/{space}/namespaces/{namespace}/secrets/{name}", func(r chi.Router) {
-		r.Get("/", s.handleGetSecret)
-		r.Put("/", s.handlePutSecret)
-		r.Delete("/", s.handleDeleteSecret)
-	})
+	s.router.Post("/api/v1/shutdown", s.handleShutdown)
+	s.router.Get("/api/v1/secrets/{name}", s.handleGetSecret)
+	s.router.Put("/api/v1/secrets/{name}", s.handlePutSecret)
+	s.router.Delete("/api/v1/secrets/{name}", s.handleDeleteSecret)
 
 	return s
 }
@@ -52,39 +53,29 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(builder, "<html><head><title>vaultline</title><style>body{font-family:sans-serif;margin:2rem;}h1{margin-bottom:1rem;}section{margin-bottom:1.5rem;}code{background:#f4f4f4;padding:2px 4px;border-radius:3px;}</style></head><body>")
 	fmt.Fprintf(builder, "<h1>vaultline %s</h1>", s.version)
 	if s.store.Sealed() {
-		builder.WriteString("<p>Status: <strong>sealed</strong>. Unseal via CLI to view spaces.</p>")
+		builder.WriteString("<p>Status: <strong>sealed</strong>. Unseal via CLI to view secrets.</p>")
 		builder.WriteString("</body></html>")
 		w.Write([]byte(builder.String()))
 		return
 	}
-	summaries, err := s.store.ListSpaces(5)
+	keys, err := s.store.ListKeys(20)
 	if err != nil {
-		builder.WriteString("<p>Unable to list spaces.</p>")
+		builder.WriteString("<p>Unable to list secrets.</p>")
 		builder.WriteString("</body></html>")
 		w.Write([]byte(builder.String()))
 		return
 	}
-	for _, space := range summaries {
-		fmt.Fprintf(builder, "<section><h2>Space: %s</h2>", space.Space)
-		if len(space.Namespaces) == 0 {
-			builder.WriteString("<p>No namespaces.</p>")
-			builder.WriteString("</section>")
-			continue
-		}
-		for _, ns := range space.Namespaces {
-			fmt.Fprintf(builder, "<h3>Namespace: %s</h3>", ns.Namespace)
-			if len(ns.Secrets) == 0 {
-				builder.WriteString("<p>No secrets.</p>")
-				continue
-			}
-			builder.WriteString("<ul>")
-			for _, secret := range ns.Secrets {
-				fmt.Fprintf(builder, "<li><code>%s</code></li>", secret)
-			}
-			builder.WriteString("</ul>")
-		}
-		builder.WriteString("</section>")
+	if len(keys) == 0 {
+		builder.WriteString("<p>No secrets stored yet.</p>")
+		builder.WriteString("</body></html>")
+		w.Write([]byte(builder.String()))
+		return
 	}
+	builder.WriteString("<ul>")
+	for _, key := range keys {
+		fmt.Fprintf(builder, "<li><code>%s</code></li>", key)
+	}
+	builder.WriteString("</ul>")
 	builder.WriteString("</body></html>")
 	w.Write([]byte(builder.String()))
 }
@@ -120,8 +111,6 @@ func (s *Server) handleUnseal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
-	space := chi.URLParam(r, "space")
-	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
 
 	if s.store.Sealed() {
@@ -138,7 +127,7 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "INVALID_PAYLOAD", "value must be base64 encoded")
 		return
 	}
-	version, err := s.store.Put(space, namespace, name, payload)
+	version, err := s.store.Put(name, payload)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -146,11 +135,17 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.VersionResponse{Version: version})
 }
 
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"status": "shutting_down"})
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		os.Exit(0)
+	}()
+}
+
 func (s *Server) handleGetSecret(w http.ResponseWriter, r *http.Request) {
-	space := chi.URLParam(r, "space")
-	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
-	secret, err := s.store.Get(space, namespace, name)
+	secret, err := s.store.Get(name)
 	if err != nil {
 		handleStoreError(w, err)
 		return
@@ -163,10 +158,8 @@ func (s *Server) handleGetSecret(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
-	space := chi.URLParam(r, "space")
-	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
-	if err := s.store.Delete(space, namespace, name); err != nil {
+	if err := s.store.Delete(name); err != nil {
 		handleStoreError(w, err)
 		return
 	}

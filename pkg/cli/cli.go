@@ -32,15 +32,17 @@ func usageText() string {
 
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
-      unseal                     Prompt for passphrase and unlock the daemon
-      seal                       Reseal the daemon
+      unseal                     Prompt for passphrase and unlock the local store
+      seal                       Reseal the local store
       daemon-stop                Ask the daemon to shut down
+      store add|init|list|show|unseal|seal|delete
+                                 Manage named stores
       secret set|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
 
 Examples:
   vaultline daemon --store-dir ./store
   vaultline --addr 127.0.0.1:8428 health
-  vaultline --addr 127.0.0.1:8428 secret set --name app.api-key --stdin
+  vaultline --addr 127.0.0.1:8428 secret set project-a:app.api-key --stdin
 `
 }
 
@@ -81,11 +83,13 @@ func Run(args []string, out io.Writer) error {
 	case "health":
 		return runHealth(baseURL, *output, out)
 	case "unseal":
-		return runUnseal(baseURL, out)
+		return runUnseal(baseURL, remaining[1:], out)
 	case "seal":
-		return runSeal(baseURL, out)
+		return runSeal(baseURL, remaining[1:], out)
 	case "daemon-stop":
 		return runDaemonStop(baseURL, out)
+	case "store":
+		return runStore(baseURL, remaining[1:], out)
 	case "secret":
 		return runSecret(baseURL, remaining[1:], *output, out)
 	default:
@@ -112,38 +116,91 @@ func runHealth(baseURL, outputFmt string, out io.Writer) error {
 		fmt.Fprintln(out, string(body))
 		return nil
 	}
-	fmt.Fprintf(out, "sealed=%v status=%v\n", payload["sealed"], payload["status"])
+	printKeyValueTable(
+		[][2]string{{"DAEMON_STATUS", fmt.Sprint(payload["status"])}, {"DEFAULT_STORE", fmt.Sprint(payload["default_store"])}},
+		out,
+	)
+	if storesValue, ok := payload["stores"].([]any); ok {
+		rows := make([][]string, 0, len(storesValue))
+		for _, item := range storesValue {
+			if entry, ok := item.(map[string]any); ok {
+				errValue := ""
+				if entry["error"] != nil {
+					errValue = sanitizeStoreError(fmt.Sprint(entry["error"]))
+				}
+				storeStatus := "unsealed"
+				if available, ok := entry["available"].(bool); ok && !available {
+					storeStatus = "unavailable"
+				} else if sealed, ok := entry["sealed"].(bool); ok && sealed {
+					storeStatus = "sealed"
+				}
+				rows = append(rows, []string{fmt.Sprint(entry["name"]), storeStatus, errValue})
+			}
+		}
+		printTable([]string{"STORE", "STATUS", "ERROR"}, rows, out)
+	}
 	return nil
 }
 
-func runUnseal(baseURL string, out io.Writer) error {
+func tryUnseal(endpoint, passphrase string) ([]byte, int, error) {
+	payload, err := json.Marshal(api.UnsealRequest{Passphrase: passphrase})
+	if err != nil {
+		return nil, 0, err
+	}
+	resp, err := httpClient.Post(endpoint, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return body, resp.StatusCode, nil
+}
+
+func runUnseal(baseURL string, args []string, out io.Writer) error {
+	if len(args) > 0 {
+		return fmt.Errorf("usage: vaultline unseal")
+	}
+	body, status, err := tryUnseal(baseURL+"/api/v1/unseal", "")
+	if err != nil {
+		return err
+	}
+	if status == http.StatusOK {
+		fmt.Fprintln(out, "vaultline unsealed")
+		return nil
+	}
+	if !strings.Contains(string(body), "passphrase required") {
+		return fmt.Errorf("unseal failed: %s", body)
+	}
 	passphrase, err := readPassphrase()
 	if err != nil {
 		return err
 	}
-	req := api.UnsealRequest{Passphrase: passphrase}
-	data, err := json.Marshal(req)
+	body, status, err = tryUnseal(baseURL+"/api/v1/unseal", passphrase)
 	if err != nil {
 		return err
 	}
-	resp, err := httpClient.Post(baseURL+"/api/v1/unseal", "application/json", bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+	if status != http.StatusOK {
 		return fmt.Errorf("unseal failed: %s", body)
 	}
 	fmt.Fprintln(out, "vaultline unsealed")
 	return nil
 }
 
-func runSeal(baseURL string, out io.Writer) error {
-	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/seal", nil)
+func runSeal(baseURL string, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("seal", flag.ContinueOnError)
+	keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(api.SealRequest{KeepKeys: *keepKeys})
 	if err != nil {
 		return err
 	}
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/seal", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
@@ -175,6 +232,170 @@ func runDaemonStop(baseURL string, out io.Writer) error {
 	return nil
 }
 
+func runStore(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return errors.New("store command requires subcommand")
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		fmt.Fprintln(out, "Usage: vaultline store <add|init|list|show|unseal|seal|delete> ...")
+		fmt.Fprintln(out, "Aliases: delete|remove|rm")
+		return nil
+	case "list":
+		resp, err := httpClient.Get(baseURL + "/api/v1/stores")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("store list failed: %s", body)
+		}
+		var payload struct {
+			Stores []struct {
+				Name      string `json:"name"`
+				Path      string `json:"path"`
+				Default   bool   `json:"default"`
+				Available bool   `json:"available"`
+				Sealed    bool   `json:"sealed"`
+				HasKey    bool   `json:"has_key"`
+				Error     string `json:"error"`
+			} `json:"stores"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(payload.Stores))
+		for _, store := range payload.Stores {
+			errValue := sanitizeStoreError(store.Error)
+			rows = append(rows, []string{store.Name, store.Path, fmt.Sprint(store.Available), fmt.Sprint(store.Sealed), fmt.Sprint(store.Default), errValue})
+		}
+		printTable([]string{"STORE", "PATH", "AVAILABLE", "SEALED", "DEFAULT", "ERROR"}, rows, out)
+		return nil
+	case "show":
+		if len(args) != 2 {
+			return errors.New("usage: vaultline store show <name>")
+		}
+		resp, err := httpClient.Get(baseURL + "/api/v1/stores/" + url.PathEscape(args[1]))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("store show failed: %s", body)
+		}
+		fmt.Fprintln(out, string(body))
+		return nil
+	case "add", "init":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: vaultline store %s <name> <path>", args[0])
+		}
+		payload, err := json.Marshal(api.StoreCreateRequest{Name: args[1], Path: args[2], Initialize: args[0] == "init"})
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Post(baseURL+"/api/v1/stores", "application/json", bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("store %s failed: %s", args[0], body)
+		}
+		var created api.StoreCreateResponse
+		if err := json.Unmarshal(body, &created); err != nil {
+			return fmt.Errorf("unexpected store %s response: %s", args[0], body)
+		}
+		fmt.Fprintf(out, "store %s ready\n", args[1])
+		if args[0] == "init" {
+			fmt.Fprintf(out, "unseal key: %s\n", created.Passphrase)
+			fmt.Fprintln(out, "stored in config and immediately unsealed")
+		}
+		return nil
+	case "delete", "remove", "rm":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: vaultline store %s <name>", args[0])
+		}
+		req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/stores/"+url.PathEscape(args[1]), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("store delete failed: %s", body)
+		}
+		fmt.Fprintf(out, "store %s removed\n", args[1])
+		return nil
+	case "unseal", "seal":
+		fs := flag.NewFlagSet("store "+args[0], flag.ContinueOnError)
+		keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: vaultline store %s <name>", args[0])
+		}
+		storeRaw := fs.Arg(0)
+		storeName := url.PathEscape(storeRaw)
+		if args[0] == "seal" {
+			payload, err := json.Marshal(api.SealRequest{KeepKeys: *keepKeys})
+			if err != nil {
+				return err
+			}
+			req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/stores/"+storeName+"/seal", bytes.NewReader(payload))
+			if err != nil {
+				return err
+			}
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("store seal failed: %s", body)
+			}
+			fmt.Fprintf(out, "store %s sealed\n", storeRaw)
+			return nil
+		}
+		endpoint := baseURL + "/api/v1/stores/" + storeName + "/unseal"
+		body, status, err := tryUnseal(endpoint, "")
+		if err != nil {
+			return err
+		}
+		if status == http.StatusOK {
+			fmt.Fprintf(out, "store %s unsealed\n", storeRaw)
+			return nil
+		}
+		if !strings.Contains(string(body), "passphrase required") {
+			return fmt.Errorf("store unseal failed: %s", body)
+		}
+		passphrase, err := readPassphrase()
+		if err != nil {
+			return err
+		}
+		body, status, err = tryUnseal(endpoint, passphrase)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK {
+			return fmt.Errorf("store unseal failed: %s", body)
+		}
+		fmt.Fprintf(out, "store %s unsealed\n", storeRaw)
+		return nil
+	default:
+		return fmt.Errorf("unknown store subcommand %q", args[0])
+	}
+}
+
 func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("secret command requires subcommand")
@@ -187,10 +408,47 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 	case "delete":
 		return secretDelete(baseURL, args[1:], out)
 	case "list":
-		return secretList(baseURL, outputFmt, out)
+		return secretList(baseURL, args[1:], outputFmt, out)
 	default:
 		return fmt.Errorf("unknown secret subcommand %q", args[0])
 	}
+}
+
+func parseQualifiedKey(input string) (string, string, error) {
+	parts := strings.SplitN(strings.TrimSpace(input), ":", 2)
+	if len(parts) == 1 {
+		if parts[0] == "" {
+			return "", "", fmt.Errorf("secret key required")
+		}
+		return "local", parts[0], nil
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("qualified keys must look like store:key")
+	}
+	return parts[0], parts[1], nil
+}
+
+func parseStoreSelector(input string) (string, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return "local", nil
+	}
+	if !strings.HasSuffix(trimmed, ":") {
+		return "", fmt.Errorf("store selector must look like store:")
+	}
+	name := strings.TrimSuffix(trimmed, ":")
+	if name == "" {
+		return "", fmt.Errorf("store selector must look like store:")
+	}
+	return name, nil
+}
+
+func secretEndpoint(baseURL, storeName, key string) string {
+	return fmt.Sprintf("%s/api/v1/stores/%s/secrets/%s", baseURL, url.PathEscape(storeName), url.PathEscape(key))
+}
+
+func secretListEndpoint(baseURL, storeName string) string {
+	return fmt.Sprintf("%s/api/v1/stores/%s/secrets", baseURL, url.PathEscape(storeName))
 }
 
 func secretSet(baseURL string, args []string, out io.Writer) error {
@@ -214,6 +472,10 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
 	}
+	storeName, key, err := parseQualifiedKey(key)
+	if err != nil {
+		return err
+	}
 	data, err := readSecretInput(*value, *filePath, *useStdin)
 	if err != nil {
 		return err
@@ -226,8 +488,8 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
-	httpReq, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(payload))
+	endpoint := secretEndpoint(baseURL, storeName, key)
+	httpReq, err := http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -245,7 +507,7 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 	if err := json.Unmarshal(body, &version); err != nil {
 		return fmt.Errorf("unexpected response: %s", body)
 	}
-	fmt.Fprintf(out, "secret stored (version=%s)\n", version.Version)
+	fmt.Fprintf(out, "secret stored in %s (version=%s)\n", storeName, version.Version)
 	return nil
 }
 
@@ -268,8 +530,11 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
-	resp, err := httpClient.Get(url)
+	storeName, key, err := parseQualifiedKey(key)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Get(secretEndpoint(baseURL, storeName, key))
 	if err != nil {
 		return err
 	}
@@ -318,8 +583,11 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
 	}
-	url := fmt.Sprintf("%s/api/v1/secrets/%s", baseURL, key)
-	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	storeName, key, err := parseQualifiedKey(key)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodDelete, secretEndpoint(baseURL, storeName, key), nil)
 	if err != nil {
 		return err
 	}
@@ -332,12 +600,20 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("delete failed: %s", body)
 	}
-	fmt.Fprintln(out, "secret removed")
+	fmt.Fprintf(out, "secret removed from %s\n", storeName)
 	return nil
 }
 
-func secretList(baseURL, outputFmt string, out io.Writer) error {
-	resp, err := httpClient.Get(baseURL + "/api/v1/secrets")
+func secretList(baseURL string, args []string, outputFmt string, out io.Writer) error {
+	storeName := "local"
+	if len(args) > 0 {
+		var err error
+		storeName, err = parseStoreSelector(args[0])
+		if err != nil {
+			return err
+		}
+	}
+	resp, err := httpClient.Get(secretListEndpoint(baseURL, storeName))
 	if err != nil {
 		return err
 	}
@@ -358,6 +634,9 @@ func secretList(baseURL, outputFmt string, out io.Writer) error {
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return err
+	}
+	for index := range payload.Keys {
+		payload.Keys[index].Name = storeName + ":" + payload.Keys[index].Name
 	}
 	printSecretTable(payload.Keys, out)
 	return nil
@@ -467,6 +746,116 @@ func printSecretTable(entries []listEntry, out io.Writer) {
 	for _, row := range rows {
 		fmt.Fprintf(out, "%-*s  %-*s  %-*s\n", nameW, row[0], timeW, row[1], verW, row[2])
 	}
+}
+
+func printKeyValueTable(entries [][2]string, out io.Writer) {
+	keyWidth := 0
+	for _, entry := range entries {
+		if len(entry[0]) > keyWidth {
+			keyWidth = len(entry[0])
+		}
+	}
+	for _, entry := range entries {
+		fmt.Fprintf(out, "%-*s  %s\n", keyWidth, entry[0], entry[1])
+	}
+}
+
+func printTable(headers []string, rows [][]string, out io.Writer) {
+	const maxWidth = 79
+	widths := make([]int, len(headers))
+	for i, header := range headers {
+		widths[i] = len(header)
+	}
+	for _, row := range rows {
+		for i, value := range row {
+			if i < len(widths) && len(value) > widths[i] {
+				widths[i] = len(value)
+			}
+		}
+	}
+	if len(widths) > 0 {
+		fixedWidth := 0
+		for i := 0; i < len(widths)-1; i++ {
+			fixedWidth += widths[i]
+		}
+		fixedWidth += (len(widths) - 1) * 2
+		lastWidth := maxWidth - fixedWidth
+		if lastWidth < 20 {
+			lastWidth = 20
+		}
+		if widths[len(widths)-1] > lastWidth {
+			widths[len(widths)-1] = lastWidth
+		}
+	}
+	for i, header := range headers {
+		fmt.Fprintf(out, "%-*s", widths[i], header)
+		if i < len(headers)-1 {
+			fmt.Fprint(out, "  ")
+		}
+	}
+	fmt.Fprintln(out)
+	separatorWidth := 0
+	for _, width := range widths {
+		separatorWidth += width
+	}
+	separatorWidth += (len(widths) - 1) * 2
+	if separatorWidth > maxWidth {
+		separatorWidth = maxWidth
+	}
+	fmt.Fprintln(out, strings.Repeat("-", separatorWidth))
+	for _, row := range rows {
+		wrappedLast := wrapText(row[len(row)-1], widths[len(widths)-1])
+		if len(wrappedLast) == 0 {
+			wrappedLast = []string{""}
+		}
+		for lineIndex := range wrappedLast {
+			for i := 0; i < len(headers)-1; i++ {
+				value := ""
+				if lineIndex == 0 {
+					value = row[i]
+				}
+				fmt.Fprintf(out, "%-*s", widths[i], value)
+				fmt.Fprint(out, "  ")
+			}
+			fmt.Fprintf(out, "%-*s", widths[len(widths)-1], wrappedLast[lineIndex])
+			fmt.Fprintln(out)
+		}
+	}
+}
+
+func wrapText(value string, width int) []string {
+	if width <= 0 || len(value) <= width {
+		return []string{value}
+	}
+	words := strings.Fields(value)
+	if len(words) == 0 {
+		return []string{""}
+	}
+	lines := []string{}
+	current := ""
+	for _, word := range words {
+		if current == "" {
+			current = word
+			continue
+		}
+		candidate := current + " " + word
+		if len(candidate) <= width {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		current = word
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func sanitizeStoreError(value string) string {
+	value = strings.TrimPrefix(value, "vaultline: store unavailable: ")
+	value = strings.TrimPrefix(value, "vaultline: ")
+	return value
 }
 
 func readPassphrase() (string, error) {

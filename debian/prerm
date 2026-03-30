@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-systemctl stop "vaultline@${SUDO_USER}.service" 2>/dev/null || true
-systemctl disable "vaultline@${SUDO_USER}.service" 2>/dev/null || true
+STATE_DIR="/var/lib/vaultline"
+STATE_FILE="${STATE_DIR}/instances.state"
+
+mkdir -p "${STATE_DIR}"
+: > "${STATE_FILE}"
+
+while read -r unit _; do
+  [[ -n "${unit}" ]] || continue
+  enabled="false"
+  active="false"
+  if systemctl is-enabled "${unit}" >/dev/null 2>&1; then
+    enabled="true"
+  fi
+  if systemctl is-active "${unit}" >/dev/null 2>&1; then
+    active="true"
+  fi
+  printf '%s %s %s\n' "${unit}" "${enabled}" "${active}" >> "${STATE_FILE}"
+  systemctl stop "${unit}" 2>/dev/null || true
+  if [[ "${enabled}" == "true" ]]; then
+    systemctl disable "${unit}" 2>/dev/null || true
+  fi
+done < <(systemctl list-units --all --full --no-legend 'vaultline@*.service' 2>/dev/null | awk '{print $1}')
+
 systemctl daemon-reload || true

@@ -18,12 +18,17 @@ func main() {
 		addr := daemonFlags.String("addr", "127.0.0.1:8428", "listen address")
 		storeDir := daemonFlags.String("store-dir", "", "store directory")
 		sealFile := daemonFlags.String("seal-file", "", "path to seal file for auto-unseal")
+		configFile := daemonFlags.String("config-file", "", "store registry config file")
 		_ = daemonFlags.Parse(os.Args[2:])
 		storePath := *storeDir
 		if storePath == "" {
 			storePath = resolveDefaultStore()
 		}
-		if err := daemon.Run(*addr, storePath, *sealFile, version.Version); err != nil {
+		cfgPath := *configFile
+		if cfgPath == "" {
+			cfgPath = resolveDefaultStoreConfig()
+		}
+		if err := daemon.Run(*addr, storePath, *sealFile, cfgPath, version.Version); err != nil {
 			fmt.Fprintln(os.Stderr, "vaultline daemon:", err)
 			os.Exit(1)
 		}
@@ -41,4 +46,11 @@ func resolveDefaultStore() string {
 		return filepath.Join(xdgData, "vaultline", "store")
 	}
 	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "store")
+}
+
+func resolveDefaultStoreConfig() string {
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "vaultline", "stores.json")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".config", "vaultline", "stores.json")
 }

@@ -15,12 +15,23 @@ import (
 	"time"
 
 	"github.com/micwin/vaultline/internal/server"
-	"github.com/micwin/vaultline/pkg/storage"
+	"github.com/micwin/vaultline/pkg/stores"
 )
 
 // Run starts the vaultline daemon on the provided addr/storeDir and blocks until shutdown.
-func Run(addr, storeDir, sealFile, version string) error {
-	store, err := storage.New(storeDir)
+func Run(addr, storeDir, sealFile, configPath, version string) error {
+	manager, err := stores.NewManager(configPath, storeDir)
+	if err != nil {
+		return err
+	}
+	if infos, err := manager.List(); err == nil {
+		for _, info := range infos {
+			if info.Name != "local" && !info.Available {
+				log.Printf("store %s unavailable: %s", info.Name, info.Error)
+			}
+		}
+	}
+	store, err := manager.Store("local")
 	if err != nil {
 		return err
 	}
@@ -47,7 +58,7 @@ func Run(addr, storeDir, sealFile, version string) error {
 		log.Println("vaultline auto-unsealed via VAULTLINE_PASSPHRASE")
 	}
 
-	apiServer := server.New(store, version)
+	apiServer := server.New(manager, version)
 	httpServer := &http.Server{Addr: addr, Handler: apiServer.Handler()}
 
 	go func() {

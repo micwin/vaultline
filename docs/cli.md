@@ -6,41 +6,65 @@
 - `--addr 127.0.0.1:8428` — daemon address (default loopback)
 - `--output json|text|raw` — formatting used by commands that print responses
 
+## Store model
+- `local` is the default store.
+- Additional stores are addressed by prefixing keys with `store:` (for example `project-a:infra.db-password`).
+- Each store has its own path, `.master_salt`, seal state, and passphrase.
+- `store init` generates a random unseal key, prints it once, stores it in the registry config, and leaves the store immediately unsealed.
+
 ## Example session
-```
+```text
 $ export VAULTLINE_PASSPHRASE=correct-horse
 $ go run ./cmd/vaultline daemon --store-dir .testrun/store
 vaultline listening on 127.0.0.1:8428
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 health
-sealed=false status=ok
+status=ok default_store=local
+local   available=true  sealed=false  has_key=true
+
+$ go run ./cmd/vaultline --addr 127.0.0.1:8428 store init project-a .testrun/project-a
+store project-a ready
+unseal key: <printed-once>
+stored in config and immediately unsealed
 
 $ echo "abcd1234" | go run ./cmd/vaultline --addr 127.0.0.1:8428 \
-      secret set --name infra.db-password --stdin
-secret stored (version=2fbd6a7a4e)
+      secret set project-a:infra.db-password --stdin
+secret stored in project-a (version=2fbd6a7a4e)
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
-      secret get --name infra.db-password --raw
+      secret get project-a:infra.db-password --output raw
 abcd1234
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
-      secret delete --name infra.db-password
-secret removed
+      store seal project-a --keep-keys
+store project-a sealed
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 \
-      secret list
-infra.db-password
+      store unseal project-a
+store project-a unsealed
 ```
 
 ## Secret commands
-Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g., `app.payments.api-key`). The CLI simply proxies to the REST API:
-- `secret set --name <key> [--value|--file|--stdin]` (omit all input flags to type the secret interactively when running in a TTY; input is masked). Keys can also be supplied positionally before/after flags: `vaultline secret set api-key --value ...`.
-- `secret get --name <key> [--out path] [--output raw|json]`
-- `secret delete --name <key>`
-- `secret list [--output json]` — lists stored keys (text output shows columns for key, last update timestamp, and version)
+Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `app.payments.api-key`). Prefixing with `store:` selects a non-default store.
+
+- `secret set <store:key> [--value|--file|--stdin]`
+  - omit all input flags to type the secret interactively when running in a TTY; input is masked
+  - omit the prefix to target `local`
+- `secret get <store:key> [--out path] [--output raw|json]`
+- `secret delete <store:key>`
+- `secret list [store:] [--output json]`
+  - text output shows `store:key`, update timestamp, and version
+
+## Store commands
+- `store add <name> <path>` — register an existing store
+- `store init <name> <path>` — create, register, and immediately unseal a new store
+- `store list` — show every configured store plus availability/seal state
+- `store show <name>` — dump one store entry as JSON
+- `store unseal <name>` — first tries any remembered passphrase; prompts only if none is stored
+- `store seal <name> [--keep-keys]` — seal the store; remembered passphrases are removed unless `--keep-keys` is specified
 
 ## Diagnostics
-- `vaultline health` — prints sealed state, status, and version
-- `curl http://127.0.0.1:8428/` — returns a tiny HTML dashboard that lists a sample of stored keys when unsealed
+- `vaultline health` — prints daemon status, default store, and the status of every configured store
+- `curl http://127.0.0.1:8428/` — returns a tiny HTML dashboard listing every known store and whether it is sealed, unsealed, or unavailable
 
-The CLI exits non-zero when the daemon is sealed, missing, or rejects a request (e.g. invalid key names), which makes it safe to script.
+The CLI exits non-zero when the daemon is missing, the target store is sealed, or a configured store is unavailable/broken.

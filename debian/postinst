@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+
+STATE_FILE="/var/lib/vaultline/instances.state"
 
 systemctl daemon-reload || true
+
+if [[ -f "${STATE_FILE}" ]]; then
+  while read -r unit enabled active; do
+    [[ -n "${unit}" ]] || continue
+    if [[ "${enabled}" == "true" ]]; then
+      systemctl enable "${unit}" 2>/dev/null || true
+    fi
+    if [[ "${active}" == "true" ]]; then
+      systemctl start "${unit}" 2>/dev/null || true
+    fi
+  done < "${STATE_FILE}"
+fi

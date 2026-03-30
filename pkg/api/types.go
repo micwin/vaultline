@@ -7,7 +7,12 @@ type UnsealRequest struct {
 
 // UnsealResponse mirrors sealed state after an unseal attempt.
 type UnsealResponse struct {
-	Sealed bool `json:"sealed"`
+	Store  string `json:"store,omitempty"`
+	Sealed bool   `json:"sealed"`
+}
+
+type SealRequest struct {
+	KeepKeys bool `json:"keep_keys"`
 }
 
 // SecretRequest allows clients to create or update a secret. Value must be base64 encoded.
@@ -24,6 +29,22 @@ type SecretResponse struct {
 // VersionResponse is returned when only the version string is needed.
 type VersionResponse struct {
 	Version string `json:"version"`
+}
+
+type StoreCreateRequest struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Initialize bool   `json:"initialize"`
+}
+
+type StoreCreateResponse struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Default    bool   `json:"default"`
+	Available  bool   `json:"available"`
+	Sealed     bool   `json:"sealed"`
+	HasKey     bool   `json:"has_key"`
+	Passphrase string `json:"passphrase,omitempty"`
 }
 
 // ErrorResponse is returned when the API needs to describe a fault.

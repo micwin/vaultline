@@ -8,6 +8,9 @@ fi
 PROJECT_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
 STATE_DIR="${PROJECT_ROOT}/.testrun"
 STORE_DIR="${STATE_DIR}/store"
+PROJECT_STORE_DIR="${STATE_DIR}/stores/project-a"
+STORE_CONFIG_DIR="${STATE_DIR}/config"
+STORE_CONFIG_FILE="${STORE_CONFIG_DIR}/stores.json"
 LOG_FILE="${STATE_DIR}/vaultlined.log"
 PID_FILE="${STATE_DIR}/vaultlined.pid"
 ENV_FILE="${STATE_DIR}/env"
@@ -36,7 +39,7 @@ if [[ -z "${GO_BIN}" ]]; then
 fi
 GOOS="" GOARCH="" go build -o "${CLI_BIN}" ./cmd/vaultline
 
-VAULTLINE_PASSPHRASE="${PASS}" "${CLI_BIN}" daemon --addr "${ADDR}" --store-dir "${STORE_DIR}" >"${LOG_FILE}" 2>&1 &
+VAULTLINE_PASSPHRASE="${PASS}" XDG_CONFIG_HOME="${STORE_CONFIG_DIR}" "${CLI_BIN}" daemon --addr "${ADDR}" --store-dir "${STORE_DIR}" --config-file "${STORE_CONFIG_FILE}" >"${LOG_FILE}" 2>&1 &
 PID=$!
 echo "${PID}" > "${PID_FILE}"
 
@@ -61,6 +64,8 @@ cat > "${ENV_FILE}" <<EOF
 VAULTLINE_TEST_ADDR=${ADDR}
 VAULTLINE_TEST_PASS=${PASS}
 VAULTLINE_TEST_STORE=${STORE_DIR}
+VAULTLINE_TEST_PROJECT_STORE=${PROJECT_STORE_DIR}
+VAULTLINE_TEST_STORE_CONFIG=${STORE_CONFIG_FILE}
 VAULTLINE_TEST_PID=${PID}
 VAULTLINE_TEST_LOG=${LOG_FILE}
 VAULTLINE_TEST_BIN=${CLI_BIN}

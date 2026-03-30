@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-if [ "$1" = "purge" ]; then
-  rm -rf /home/${SUDO_USER}/.local/share/vaultline /home/${SUDO_USER}/.config/vaultline
+STATE_FILE="/var/lib/vaultline/instances.state"
+
+if [[ "$1" = "purge" ]]; then
+  rm -f "${STATE_FILE}"
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    rm -rf "/home/${SUDO_USER}/.local/share/vaultline" "/home/${SUDO_USER}/.config/vaultline"
+  fi
 fi

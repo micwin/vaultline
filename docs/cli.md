@@ -47,8 +47,9 @@ store project-a unsealed
 ## Secret commands
 Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `app.payments.api-key`). Prefixing with `store:` selects a non-default store.
 
-- `secret set <store:key> [--value|--file|--stdin]`
+- `secret set <store:key> [--value|--file|--stdin] [--twice]`
   - omit all input flags to type the secret interactively when running in a TTY; input is masked
+  - add `--twice` together with interactive `--stdin` to require a matching confirmation prompt
   - omit the prefix to target `local`
 - `secret get <store:key> [--out path] [--output raw|json]`
 - `secret delete <store:key>`
@@ -62,6 +63,8 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `ap
 - `store show <name>` — dump one store entry as JSON
 - `store unseal <name>` — first tries any remembered passphrase; prompts only if none is stored
 - `store seal <name> [--keep-keys]` — seal the store; remembered passphrases are removed unless `--keep-keys` is specified
+- `store delete|remove|rm <name>` — remove a store from the registry without deleting files on disk
+- every command and subcommand supports `--help`, for example `vaultline store init --help` or `vaultline secret set --help`
 
 ## Diagnostics
 - `vaultline health` — prints daemon status, default store, and the status of every configured store

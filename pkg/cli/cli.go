@@ -46,13 +46,91 @@ Examples:
 `
 }
 
+func storeUsageText() string {
+	return `Usage:
+  vaultline store add <name> <path>
+      Register an existing named store.
+
+  vaultline store init <name> <path>
+      Create a new named store, generate an unseal key, store it in config,
+      and leave the store immediately unsealed.
+
+  vaultline store list
+      Show all configured stores and their status.
+
+  vaultline store show <name>
+      Show one store as JSON.
+
+  vaultline store unseal <name>
+      Unseal a named store. Uses a remembered passphrase first, then prompts.
+
+  vaultline store seal <name> [--keep-keys]
+      Seal a named store. By default remembered passphrases are removed.
+
+  vaultline store delete|remove|rm <name>
+      Remove a named store from the registry (does not delete files on disk).
+`
+}
+
+func secretUsageText() string {
+	return `Usage:
+  vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]
+  vaultline secret get <store:key> [--out PATH] [--output raw|json]
+  vaultline secret delete <store:key>
+  vaultline secret list [store:]
+
+Notes:
+  - Store prefixes use the form store:key and default to local when omitted.
+  - Secret names must use lowercase letters plus . or -.
+  - --twice only applies to interactive --stdin input and aborts on mismatch.
+`
+}
+
+func storeSubcommandHelp(name string) string {
+	switch name {
+	case "add":
+		return "Usage:\n  vaultline store add <name> <path>\n\nRegister an existing store path in the local registry."
+	case "init":
+		return "Usage:\n  vaultline store init <name> <path>\n\nCreate a new store at <path>, generate an unseal key, remember it in config, and leave the store unsealed."
+	case "list":
+		return "Usage:\n  vaultline store list\n\nList all configured stores and their status."
+	case "show":
+		return "Usage:\n  vaultline store show <name>\n\nShow one configured store as JSON."
+	case "unseal":
+		return "Usage:\n  vaultline store unseal <name>\n\nUnseal one named store. Uses a remembered passphrase first, then prompts if needed."
+	case "seal":
+		return "Usage:\n  vaultline store seal <name> [--keep-keys]\n\nSeal one named store. By default remembered passphrases are removed from config."
+	case "delete", "remove", "rm":
+		return "Usage:\n  vaultline store delete <name>\n\nRemove a named store from the registry without touching files on disk."
+	default:
+		return storeUsageText()
+	}
+}
+
+func secretSubcommandHelp(name string) string {
+	switch name {
+	case "set":
+		return "Usage:\n  vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]\n\nStore or overwrite a secret in the selected store. `--twice` requires interactive `--stdin` and asks for the secret twice."
+	case "get":
+		return "Usage:\n  vaultline secret get <store:key> [--out PATH] [--output raw|json]\n\nFetch a secret from the selected store."
+	case "delete":
+		return "Usage:\n  vaultline secret delete <store:key>\n\nDelete a secret from the selected store."
+	case "list":
+		return "Usage:\n  vaultline secret list [store:]\n\nList secrets from one store (default: local)."
+	default:
+		return secretUsageText()
+	}
+}
+
+func isHelpArg(arg string) bool {
+	return arg == "-h" || arg == "--help" || arg == "help"
+}
+
 // Run executes the CLI subcommands.
 func Run(args []string, out io.Writer) error {
-	for _, a := range args {
-		if a == "-h" || a == "--help" {
-			fmt.Fprint(out, usageText())
-			return nil
-		}
+	if len(args) == 1 && isHelpArg(args[0]) {
+		fmt.Fprint(out, usageText())
+		return nil
 	}
 	fs := flag.NewFlagSet("vaultline", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8428", "vaultline address")
@@ -158,6 +236,10 @@ func tryUnseal(endpoint, passphrase string) ([]byte, int, error) {
 
 func runUnseal(baseURL string, args []string, out io.Writer) error {
 	if len(args) > 0 {
+		if len(args) == 1 && isHelpArg(args[0]) {
+			fmt.Fprintln(out, "Usage:\n  vaultline unseal\n\nUnseal the local store. Uses a remembered passphrase first, then prompts if needed.")
+			return nil
+		}
 		return fmt.Errorf("usage: vaultline unseal")
 	}
 	body, status, err := tryUnseal(baseURL+"/api/v1/unseal", "")
@@ -189,7 +271,12 @@ func runUnseal(baseURL string, args []string, out io.Writer) error {
 func runSeal(baseURL string, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("seal", flag.ContinueOnError)
 	keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
+	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Fprintln(out, "Usage:\n  vaultline seal [--keep-keys]\n\nSeal the local store. By default remembered passphrases are removed from config.")
+			return nil
+		}
 		return err
 	}
 	payload, err := json.Marshal(api.SealRequest{KeepKeys: *keepKeys})
@@ -234,13 +321,18 @@ func runDaemonStop(baseURL string, out io.Writer) error {
 
 func runStore(baseURL string, args []string, out io.Writer) error {
 	if len(args) == 0 {
+		fmt.Fprintln(out, storeUsageText())
 		return errors.New("store command requires subcommand")
 	}
-	switch args[0] {
-	case "help", "-h", "--help":
-		fmt.Fprintln(out, "Usage: vaultline store <add|init|list|show|unseal|seal|delete> ...")
-		fmt.Fprintln(out, "Aliases: delete|remove|rm")
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, storeUsageText())
 		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, storeSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
 	case "list":
 		resp, err := httpClient.Get(baseURL + "/api/v1/stores")
 		if err != nil {
@@ -336,7 +428,12 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 	case "unseal", "seal":
 		fs := flag.NewFlagSet("store "+args[0], flag.ContinueOnError)
 		keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
+		fs.SetOutput(io.Discard)
 		if err := fs.Parse(args[1:]); err != nil {
+			if err == flag.ErrHelp {
+				fmt.Fprintln(out, storeSubcommandHelp(args[0]))
+				return nil
+			}
 			return err
 		}
 		if fs.NArg() != 1 {
@@ -398,7 +495,16 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 
 func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) error {
 	if len(args) == 0 {
+		fmt.Fprintln(out, secretUsageText())
 		return errors.New("secret command requires subcommand")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, secretUsageText())
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, secretSubcommandHelp(args[0]))
+		return nil
 	}
 	switch args[0] {
 	case "set":
@@ -458,6 +564,7 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")
 	useStdin := fs.Bool("stdin", false, "read secret from stdin (mask prompt when running interactively)")
+	confirmTwice := fs.Bool("twice", false, "when prompting via --stdin, require the secret to be entered twice")
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
@@ -476,7 +583,7 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	data, err := readSecretInput(*value, *filePath, *useStdin)
+	data, err := readSecretInput(*value, *filePath, *useStdin, *confirmTwice)
 	if err != nil {
 		return err
 	}
@@ -642,7 +749,7 @@ func secretList(baseURL string, args []string, outputFmt string, out io.Writer) 
 	return nil
 }
 
-func readSecretInput(literal, filePath string, stdin bool) ([]byte, error) {
+func readSecretInput(literal, filePath string, stdin, twice bool) ([]byte, error) {
 	switch {
 	case stdin:
 		if term.IsTerminal(int(syscall.Stdin)) {
@@ -652,14 +759,40 @@ func readSecretInput(literal, filePath string, stdin bool) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []byte(strings.TrimSpace(string(bytesValue))), nil
+			first := []byte(strings.TrimSpace(string(bytesValue)))
+			if !twice {
+				return first, nil
+			}
+			fmt.Print("Repeat secret value: ")
+			confirmValue, err := term.ReadPassword(int(syscall.Stdin))
+			fmt.Println()
+			if err != nil {
+				return nil, err
+			}
+			return confirmSecretMatch(first, []byte(strings.TrimSpace(string(confirmValue))))
+		}
+		if twice {
+			return nil, fmt.Errorf("--twice requires interactive --stdin input")
 		}
 		return io.ReadAll(os.Stdin)
 	case filePath != "":
+		if twice {
+			return nil, fmt.Errorf("--twice requires --stdin")
+		}
 		return os.ReadFile(filePath)
 	default:
+		if twice {
+			return nil, fmt.Errorf("--twice requires --stdin")
+		}
 		return []byte(literal), nil
 	}
+}
+
+func confirmSecretMatch(first, second []byte) ([]byte, error) {
+	if string(first) != string(second) {
+		return nil, fmt.Errorf("secret values do not match")
+	}
+	return first, nil
 }
 
 func promptSecretValue() ([]byte, error) {

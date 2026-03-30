@@ -30,11 +30,20 @@ func usageText() string {
       Starts the HTTPS API server. When --store-dir is omitted the daemon
       uses $XDG_DATA_HOME/vaultline/store or ~/.local/share/vaultline/store.
 
+  vaultline daemon bind <addr>
+  vaultline daemon list-binds
+  vaultline daemon unbind <addr>
+  vaultline daemon allow <addr> <cidr-or-ip>
+  vaultline daemon list-allows <addr>
+  vaultline daemon unallow <addr> <cidr-or-ip>
+      Manage extra remote listeners. Loopback remains implicitly available.
+
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
       unseal                     Prompt for passphrase and unlock the local store
       seal                       Reseal the local store
       daemon-stop                Ask the daemon to shut down
+      daemon                     Manage extra daemon binds and allow rules
       store add|init|list|show|unseal|seal|delete
                                  Manage named stores
       secret set|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
@@ -70,6 +79,47 @@ func storeUsageText() string {
   vaultline store delete|remove|rm <name>
       Remove a named store from the registry (does not delete files on disk).
 `
+}
+
+func daemonUsageText() string {
+	return `Usage:
+  vaultline daemon bind <addr>
+      Add an extra listener address. Loopback stays implicit and cannot be managed here.
+
+  vaultline daemon list-binds
+      List configured extra listeners.
+
+  vaultline daemon unbind <addr>
+      Remove an extra listener and all of its allow rules.
+
+  vaultline daemon allow <addr> <cidr-or-ip>
+      Allow one remote host/network for a configured extra listener.
+
+  vaultline daemon list-allows <addr>
+      List allow rules for one extra listener.
+
+  vaultline daemon unallow <addr> <cidr-or-ip>
+      Remove one allow rule from a listener.
+`
+}
+
+func daemonSubcommandHelp(name string) string {
+	switch name {
+	case "bind":
+		return "Usage:\n  vaultline daemon bind <addr>\n\nAdd an extra listener address. Loopback remains implicitly available and cannot be configured here."
+	case "list-binds":
+		return "Usage:\n  vaultline daemon list-binds\n\nList all configured extra listeners and whether they are blocked or allowlisted."
+	case "unbind":
+		return "Usage:\n  vaultline daemon unbind <addr>\n\nRemove an extra listener and all of its allow rules."
+	case "allow":
+		return "Usage:\n  vaultline daemon allow <addr> <cidr-or-ip>\n\nAllow one remote host or network for a configured listener."
+	case "list-allows":
+		return "Usage:\n  vaultline daemon list-allows <addr>\n\nList allow rules for one listener."
+	case "unallow":
+		return "Usage:\n  vaultline daemon unallow <addr> <cidr-or-ip>\n\nRemove one allow rule from a configured listener."
+	default:
+		return daemonUsageText()
+	}
 }
 
 func secretUsageText() string {
@@ -166,6 +216,8 @@ func Run(args []string, out io.Writer) error {
 		return runSeal(baseURL, remaining[1:], out)
 	case "daemon-stop":
 		return runDaemonStop(baseURL, out)
+	case "daemon":
+		return runDaemon(baseURL, remaining[1:], out)
 	case "store":
 		return runStore(baseURL, remaining[1:], out)
 	case "secret":
@@ -216,6 +268,18 @@ func runHealth(baseURL, outputFmt string, out io.Writer) error {
 			}
 		}
 		printTable([]string{"STORE", "STATUS", "ERROR"}, rows, out)
+	}
+	if bindsValue, ok := payload["binds"].([]any); ok {
+		rows := make([][]string, 0, len(bindsValue))
+		for _, item := range bindsValue {
+			if entry, ok := item.(map[string]any); ok {
+				rows = append(rows, []string{fmt.Sprint(entry["addr"]), fmt.Sprint(entry["allow_count"]), fmt.Sprint(entry["state"])})
+			}
+		}
+		if len(rows) > 0 {
+			fmt.Fprintln(out)
+			printTable([]string{"BIND", "ALLOWS", "STATE"}, rows, out)
+		}
 	}
 	return nil
 }
@@ -317,6 +381,159 @@ func runDaemonStop(baseURL string, out io.Writer) error {
 	}
 	fmt.Fprintln(out, "vaultline shutdown requested")
 	return nil
+}
+
+func runDaemon(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 || isHelpArg(args[0]) {
+		fmt.Fprintln(out, daemonUsageText())
+		if len(args) == 0 {
+			return errors.New("daemon command requires subcommand")
+		}
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, daemonSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
+	case "bind":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: vaultline daemon bind <addr>")
+		}
+		payload, err := json.Marshal(api.DaemonBindRequest{Addr: args[1]})
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Post(baseURL+"/api/v1/daemon/binds", "application/json", bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("daemon bind failed: %s", body)
+		}
+		fmt.Fprintf(out, "bind %s added\n", args[1])
+		return nil
+	case "list-binds":
+		resp, err := httpClient.Get(baseURL + "/api/v1/daemon/binds")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("list-binds failed: %s", body)
+		}
+		var payload struct {
+			Binds []struct {
+				Addr   string   `json:"addr"`
+				Allows []string `json:"allows"`
+			} `json:"binds"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		rows := make([][]string, 0, len(payload.Binds))
+		for _, bind := range payload.Binds {
+			state := "blocked"
+			if len(bind.Allows) > 0 {
+				state = "allowlisted"
+			}
+			rows = append(rows, []string{bind.Addr, fmt.Sprint(len(bind.Allows)), state})
+		}
+		printTable([]string{"BIND", "ALLOWS", "STATE"}, rows, out)
+		return nil
+	case "unbind":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: vaultline daemon unbind <addr>")
+		}
+		req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/daemon/binds/"+url.PathEscape(args[1]), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusNoContent {
+			return fmt.Errorf("daemon unbind failed: %s", body)
+		}
+		fmt.Fprintf(out, "bind %s removed\n", args[1])
+		return nil
+	case "allow":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: vaultline daemon allow <addr> <cidr-or-ip>")
+		}
+		payload, err := json.Marshal(api.DaemonAllowRequest{Rule: args[2]})
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Post(baseURL+"/api/v1/daemon/binds/"+url.PathEscape(args[1])+"/allows", "application/json", bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("daemon allow failed: %s", body)
+		}
+		fmt.Fprintf(out, "allow %s added to %s\n", args[2], args[1])
+		return nil
+	case "list-allows":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: vaultline daemon list-allows <addr>")
+		}
+		resp, err := httpClient.Get(baseURL + "/api/v1/daemon/binds/" + url.PathEscape(args[1]) + "/allows")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("list-allows failed: %s", body)
+		}
+		var payload struct {
+			Addr   string   `json:"addr"`
+			Allows []string `json:"allows"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return err
+		}
+		if len(payload.Allows) == 0 {
+			fmt.Fprintf(out, "%s has no allow rules\n", payload.Addr)
+			return nil
+		}
+		rows := make([][]string, 0, len(payload.Allows))
+		for _, rule := range payload.Allows {
+			rows = append(rows, []string{payload.Addr, rule})
+		}
+		printTable([]string{"BIND", "ALLOW"}, rows, out)
+		return nil
+	case "unallow":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: vaultline daemon unallow <addr> <cidr-or-ip>")
+		}
+		req, err := http.NewRequest(http.MethodDelete, baseURL+"/api/v1/daemon/binds/"+url.PathEscape(args[1])+"/allows/"+url.PathEscape(args[2]), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusNoContent {
+			return fmt.Errorf("daemon unallow failed: %s", body)
+		}
+		fmt.Fprintf(out, "allow %s removed from %s\n", args[2], args[1])
+		return nil
+	default:
+		return fmt.Errorf("unknown daemon subcommand %q", args[0])
+	}
 }
 
 func runStore(baseURL string, args []string, out io.Writer) error {

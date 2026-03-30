@@ -66,8 +66,17 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `ap
 - `store delete|remove|rm <name>` — remove a store from the registry without deleting files on disk
 - every command and subcommand supports `--help`, for example `vaultline store init --help` or `vaultline secret set --help`
 
+## Daemon listener commands
+- `daemon bind <addr>` — add an extra listener (for example `0.0.0.0:8384`)
+- `daemon list-binds` — list configured extra listeners and whether they are blocked/allowlisted
+- `daemon unbind <addr>` — remove a listener and all of its allow rules
+- `daemon allow <addr> <cidr-or-ip>` — allow a remote IP/CIDR for one listener
+- `daemon list-allows <addr>` — list allow rules for one listener
+- `daemon unallow <addr> <cidr-or-ip>` — remove one allow rule
+- loopback stays implicitly available for the CLI and cannot be managed through these commands
+
 ## Diagnostics
-- `vaultline health` — prints daemon status, default store, and the status of every configured store
+- `vaultline health` — prints daemon status, default store, the status of every configured store, and all extra daemon binds plus their allow counts/state
 - `curl http://127.0.0.1:8428/` — returns a tiny HTML dashboard listing every known store and whether it is sealed, unsealed, or unavailable
 
 The CLI exits non-zero when the daemon is missing, the target store is sealed, or a configured store is unavailable/broken.

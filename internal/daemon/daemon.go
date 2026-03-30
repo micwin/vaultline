@@ -14,13 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/micwin/vaultline/internal/daemoncfg"
 	"github.com/micwin/vaultline/internal/server"
 	"github.com/micwin/vaultline/pkg/stores"
 )
 
 // Run starts the vaultline daemon on the provided addr/storeDir and blocks until shutdown.
-func Run(addr, storeDir, sealFile, configPath, version string) error {
-	manager, err := stores.NewManager(configPath, storeDir)
+func Run(addr, storeDir, sealFile, storeConfigPath, daemonConfigPath, version string) error {
+	manager, err := stores.NewManager(storeConfigPath, storeDir)
 	if err != nil {
 		return err
 	}
@@ -30,6 +31,10 @@ func Run(addr, storeDir, sealFile, configPath, version string) error {
 				log.Printf("store %s unavailable: %s", info.Name, info.Error)
 			}
 		}
+	}
+	networkConfig, err := daemoncfg.New(daemonConfigPath)
+	if err != nil {
+		return err
 	}
 	store, err := manager.Store("local")
 	if err != nil {
@@ -58,8 +63,13 @@ func Run(addr, storeDir, sealFile, configPath, version string) error {
 		log.Println("vaultline auto-unsealed via VAULTLINE_PASSPHRASE")
 	}
 
-	apiServer := server.New(manager, version)
+	network := NewNetworkManager(networkConfig)
+	apiServer := server.New(manager, network, version)
+	network.SetHandler(apiServer.Handler())
 	httpServer := &http.Server{Addr: addr, Handler: apiServer.Handler()}
+	if err := network.Apply(); err != nil {
+		return err
+	}
 
 	go func() {
 		log.Printf("vaultline listening on %s (store: %s)", addr, storeDir)
@@ -75,6 +85,7 @@ func Run(addr, storeDir, sealFile, configPath, version string) error {
 	if err := httpServer.Shutdown(ctx); err != nil {
 		return err
 	}
+	network.Stop()
 	log.Println("vaultline stopped")
 	return nil
 }

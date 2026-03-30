@@ -54,6 +54,16 @@ func TestSecretSetHelpShowsSubcommandUsage(t *testing.T) {
 	}
 }
 
+func TestDaemonBindHelpShowsSubcommandUsage(t *testing.T) {
+	var out bytes.Buffer
+	if err := Run([]string{"daemon", "bind", "--help"}, &out); err != nil {
+		t.Fatalf("run daemon bind help: %v", err)
+	}
+	if !strings.Contains(out.String(), "vaultline daemon bind <addr>") {
+		t.Fatalf("unexpected help output: %s", out.String())
+	}
+}
+
 func TestConfirmSecretMatch(t *testing.T) {
 	value, err := confirmSecretMatch([]byte("same"), []byte("same"))
 	if err != nil {

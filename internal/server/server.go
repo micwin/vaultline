@@ -6,29 +6,43 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/micwin/vaultline/internal/daemoncfg"
 	"github.com/micwin/vaultline/pkg/api"
 	"github.com/micwin/vaultline/pkg/storage"
 	"github.com/micwin/vaultline/pkg/stores"
 )
 
+type daemonNetwork interface {
+	AddBind(addr string) error
+	RemoveBind(addr string) error
+	AddAllow(addr, rule string) error
+	RemoveAllow(addr, rule string) error
+	ListBinds() []daemoncfg.Bind
+	ListAllows(addr string) ([]string, error)
+}
+
 // Server exposes the REST API for vaultline.
 type Server struct {
 	stores  *stores.Manager
+	network daemonNetwork
 	router  chi.Router
 	version string
 }
 
 // New constructs the HTTP server with registered routes.
-func New(manager *stores.Manager, version string) *Server {
+func New(manager *stores.Manager, network daemonNetwork, version string) *Server {
 	s := &Server{
 		stores:  manager,
+		network: network,
 		router:  chi.NewRouter(),
 		version: version,
 	}
@@ -37,6 +51,12 @@ func New(manager *stores.Manager, version string) *Server {
 	s.router.Post("/api/v1/seal", s.handleLocalSeal)
 	s.router.Post("/api/v1/unseal", s.handleLocalUnseal)
 	s.router.Post("/api/v1/shutdown", s.handleShutdown)
+	s.router.Get("/api/v1/daemon/binds", s.handleListBinds)
+	s.router.Post("/api/v1/daemon/binds", s.handleAddBind)
+	s.router.Delete("/api/v1/daemon/binds/{addr}", s.handleDeleteBind)
+	s.router.Get("/api/v1/daemon/binds/{addr}/allows", s.handleListAllows)
+	s.router.Post("/api/v1/daemon/binds/{addr}/allows", s.handleAddAllow)
+	s.router.Delete("/api/v1/daemon/binds/{addr}/allows/{rule}", s.handleDeleteAllow)
 	s.router.Get("/api/v1/secrets", s.handleLocalListSecrets)
 	s.router.Get("/api/v1/secrets/{name}", s.handleLocalGetSecret)
 	s.router.Put("/api/v1/secrets/{name}", s.handleLocalPutSecret)
@@ -95,12 +115,29 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"status":        status,
 		"version":       s.version,
 		"default_store": s.stores.DefaultStore(),
 		"stores":        infos,
-	})
+	}
+	if isLoopbackRequest(r) {
+		binds := s.network.ListBinds()
+		bindInfos := make([]map[string]any, 0, len(binds))
+		for _, bind := range binds {
+			state := "blocked"
+			if len(bind.Allows) > 0 {
+				state = "allowlisted"
+			}
+			bindInfos = append(bindInfos, map[string]any{
+				"addr":        bind.Addr,
+				"allow_count": len(bind.Allows),
+				"state":       state,
+			})
+		}
+		payload["binds"] = bindInfos
+	}
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (s *Server) handleLocalSeal(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +180,110 @@ func (s *Server) handleStoreInfo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteStore(w http.ResponseWriter, r *http.Request) {
 	if err := s.stores.Remove(chi.URLParam(r, "store")); err != nil {
 		writeError(w, http.StatusBadRequest, "STORE_DELETE_FAILED", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListBinds(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon bind information is only available via loopback")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"binds": s.network.ListBinds()})
+}
+
+func (s *Server) handleAddBind(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon bind management is only available via loopback")
+		return
+	}
+	var req api.DaemonBindRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	if err := s.network.AddBind(req.Addr); err != nil {
+		writeError(w, http.StatusBadRequest, "BIND_ADD_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"addr": req.Addr})
+}
+
+func (s *Server) handleDeleteBind(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon bind management is only available via loopback")
+		return
+	}
+	addr, err := url.PathUnescape(chi.URLParam(r, "addr"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_BIND", err.Error())
+		return
+	}
+	if err := s.network.RemoveBind(addr); err != nil {
+		writeError(w, http.StatusBadRequest, "BIND_DELETE_FAILED", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleListAllows(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon allow information is only available via loopback")
+		return
+	}
+	addr, err := url.PathUnescape(chi.URLParam(r, "addr"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_BIND", err.Error())
+		return
+	}
+	allows, err := s.network.ListAllows(addr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "ALLOW_LIST_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"addr": addr, "allows": allows})
+}
+
+func (s *Server) handleAddAllow(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon allow management is only available via loopback")
+		return
+	}
+	addr, err := url.PathUnescape(chi.URLParam(r, "addr"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_BIND", err.Error())
+		return
+	}
+	var req api.DaemonAllowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	if err := s.network.AddAllow(addr, req.Rule); err != nil {
+		writeError(w, http.StatusBadRequest, "ALLOW_ADD_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"addr": addr, "rule": req.Rule})
+}
+
+func (s *Server) handleDeleteAllow(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "daemon allow management is only available via loopback")
+		return
+	}
+	addr, err := url.PathUnescape(chi.URLParam(r, "addr"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_BIND", err.Error())
+		return
+	}
+	rule, err := url.PathUnescape(chi.URLParam(r, "rule"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ALLOW", err.Error())
+		return
+	}
+	if err := s.network.RemoveAllow(addr, rule); err != nil {
+		writeError(w, http.StatusBadRequest, "ALLOW_DELETE_FAILED", err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -348,4 +489,16 @@ func generatePassphrase() (string, error) {
 		return "", err
 	}
 	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

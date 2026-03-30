@@ -47,6 +47,14 @@ type StoreCreateResponse struct {
 	Passphrase string `json:"passphrase,omitempty"`
 }
 
+type DaemonBindRequest struct {
+	Addr string `json:"addr"`
+}
+
+type DaemonAllowRequest struct {
+	Rule string `json:"rule"`
+}
+
 // ErrorResponse is returned when the API needs to describe a fault.
 type ErrorResponse struct {
 	Error   string `json:"error"`

@@ -98,6 +98,16 @@ dpkg-deb --build debian "${DEB_PATH}"
 
 if [[ "${INSTALL_DEB}" == "true" ]]; then
   sudo dpkg -i "${DEB_PATH}"
+  hash -r 2>/dev/null || true
+  CURRENT_SHELL="$(basename "${SHELL:-}")"
+  case "${CURRENT_SHELL}" in
+    bash)
+      echo "Refresh completion in the current shell with: source <(vaultline completion bash)"
+      ;;
+    zsh)
+      echo "Refresh completion in the current shell with: source <(vaultline completion zsh)"
+      ;;
+  esac
 fi
 
 echo "Built vaultline ${NEW_VERSION}"

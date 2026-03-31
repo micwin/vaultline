@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/micwin/vaultline/internal/daemoncfg"
@@ -100,5 +101,27 @@ func TestDaemonBindListForbiddenForRemoteClients(t *testing.T) {
 	srv.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected forbidden status, got %d", rr.Code)
+	}
+}
+
+func TestStoreSecretErrorsMentionStoreName(t *testing.T) {
+	tmp := t.TempDir()
+	manager, err := stores.NewManager(filepath.Join(tmp, "stores.json"), filepath.Join(tmp, "local"))
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Add("project-a", filepath.Join(tmp, "project-a"), true); err != nil {
+		t.Fatalf("add store: %v", err)
+	}
+	srv := New(manager, stubNetwork{}, "test")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stores/project-a/secrets/demo", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected sealed response, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "project-a") {
+		t.Fatalf("expected store name in error, got %s", rr.Body.String())
 	}
 }

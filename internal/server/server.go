@@ -141,22 +141,22 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLocalSeal(w http.ResponseWriter, r *http.Request) {
-	s.handleSealForStore("local", w, r)
+	s.handleSealForStore(stores.DefaultStoreName, w, r)
 }
 func (s *Server) handleLocalListSecrets(w http.ResponseWriter, r *http.Request) {
-	s.handleListSecretsForStore("local", w)
+	s.handleListSecretsForStore(stores.DefaultStoreName, w)
 }
 func (s *Server) handleLocalGetSecret(w http.ResponseWriter, r *http.Request) {
-	s.handleGetSecretForStore("local", chi.URLParam(r, "name"), w)
+	s.handleGetSecretForStore(stores.DefaultStoreName, chi.URLParam(r, "name"), w)
 }
 func (s *Server) handleLocalPutSecret(w http.ResponseWriter, r *http.Request) {
-	s.handlePutSecretForStore("local", chi.URLParam(r, "name"), w, r)
+	s.handlePutSecretForStore(stores.DefaultStoreName, chi.URLParam(r, "name"), w, r)
 }
 func (s *Server) handleLocalDeleteSecret(w http.ResponseWriter, r *http.Request) {
-	s.handleDeleteSecretForStore("local", chi.URLParam(r, "name"), w)
+	s.handleDeleteSecretForStore(stores.DefaultStoreName, chi.URLParam(r, "name"), w)
 }
 func (s *Server) handleLocalUnseal(w http.ResponseWriter, r *http.Request) {
-	s.handleUnsealForStore("local", w, r)
+	s.handleUnsealForStore(stores.DefaultStoreName, w, r)
 }
 
 func (s *Server) handleListStores(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +349,7 @@ func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSealForStore(name string, w http.ResponseWriter, r *http.Request) {
 	store, err := s.stores.Store(name)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, name, err)
 		return
 	}
 	var req api.SealRequest
@@ -361,7 +361,7 @@ func (s *Server) handleSealForStore(name string, w http.ResponseWriter, r *http.
 		return
 	}
 	if err := s.stores.Seal(name, req.KeepKeys); err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, name, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sealed": true, "store": name, "keep_keys": req.KeepKeys})
@@ -374,7 +374,7 @@ func (s *Server) handleUnsealForStore(name string, w http.ResponseWriter, r *htt
 		return
 	}
 	if err := s.stores.Unseal(name, req.Passphrase); err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, name, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, api.UnsealResponse{Store: name, Sealed: false})
@@ -383,11 +383,11 @@ func (s *Server) handleUnsealForStore(name string, w http.ResponseWriter, r *htt
 func (s *Server) handlePutSecretForStore(storeName, name string, w http.ResponseWriter, r *http.Request) {
 	store, err := s.stores.Store(storeName)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	if store.Sealed() {
-		writeError(w, http.StatusConflict, "SEALED", "vaultline is sealed")
+		writeError(w, http.StatusConflict, "SEALED", fmt.Sprintf("store %s is sealed", storeName))
 		return
 	}
 	var req api.SecretRequest
@@ -402,7 +402,7 @@ func (s *Server) handlePutSecretForStore(storeName, name string, w http.Response
 	}
 	version, err := store.Put(name, payload)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, api.VersionResponse{Version: version})
@@ -411,12 +411,12 @@ func (s *Server) handlePutSecretForStore(storeName, name string, w http.Response
 func (s *Server) handleListSecretsForStore(storeName string, w http.ResponseWriter) {
 	store, err := s.stores.Store(storeName)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	keys, err := store.ListKeys(0)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
@@ -433,12 +433,12 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSecretForStore(storeName, name string, w http.ResponseWriter) {
 	store, err := s.stores.Store(storeName)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	secret, err := store.Get(name)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	resp := api.SecretResponse{Value: base64.StdEncoding.EncodeToString(secret.Data), Version: secret.Version}
@@ -448,22 +448,22 @@ func (s *Server) handleGetSecretForStore(storeName, name string, w http.Response
 func (s *Server) handleDeleteSecretForStore(storeName, name string, w http.ResponseWriter) {
 	store, err := s.stores.Store(storeName)
 	if err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	if err := store.Delete(name); err != nil {
-		handleStoreError(w, err)
+		handleStoreError(w, storeName, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func handleStoreError(w http.ResponseWriter, err error) {
+func handleStoreError(w http.ResponseWriter, storeName string, err error) {
 	switch {
 	case errors.Is(err, storage.ErrSealed):
-		writeError(w, http.StatusConflict, "SEALED", "vaultline is sealed")
+		writeError(w, http.StatusConflict, "SEALED", fmt.Sprintf("store %s is sealed", storeName))
 	case errors.Is(err, storage.ErrSecretNotFound):
-		writeError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
+		writeError(w, http.StatusNotFound, "NOT_FOUND", fmt.Sprintf("secret not found in %s", storeName))
 	case errors.Is(err, stores.ErrStoreUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "STORE_UNAVAILABLE", err.Error())
 	case strings.Contains(err.Error(), "unknown store"):

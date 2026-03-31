@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -27,12 +29,14 @@ import (
 )
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
+var execCommand = exec.Command
+var importKeyPattern = regexp.MustCompile(`^[\p{Ll}\p{Nd}@.-]+$`)
 
 func usageText() string {
 	return fmt.Sprintf("vaultline %s\n\n", version.Version) + `Usage:
   vaultline daemon [--addr HOST:PORT] [--store-dir DIR]
       Starts the HTTPS API server. When --store-dir is omitted the daemon
-      uses $XDG_DATA_HOME/vaultline/store or ~/.local/share/vaultline/store.
+      uses $XDG_DATA_HOME/vaultline/stores/default or ~/.local/share/vaultline/stores/default.
 
   vaultline daemon bind <addr>
   vaultline daemon list-binds
@@ -45,12 +49,16 @@ func usageText() string {
   vaultline completion bash|zsh
       Print shell completion for the requested shell.
 
+  vaultline import bitwarden [flags]
+      Import secrets from Bitwarden via the bw CLI.
+
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
-      unseal                     Prompt for passphrase and unlock the local store
-      seal                       Reseal the local store
+      unseal                     Prompt for passphrase and unlock the default store
+      seal                       Reseal the default store
       daemon-stop                Ask the daemon to shut down
       completion                 Print shell completion helpers
+      import                     Import external secrets
       daemon                     Manage extra daemon binds and allow rules
       store add|init|list|show|unseal|seal|delete
                                  Manage named stores
@@ -68,9 +76,10 @@ func storeUsageText() string {
   vaultline store add <name> <path>
       Register an existing named store.
 
-  vaultline store init <name> <path>
+  vaultline store init <name> [path]
       Create a new named store, generate an unseal key, store it in config,
-      and leave the store immediately unsealed.
+      and leave the store immediately unsealed. When path is omitted, the store
+      is created next to the default store under the same parent directory.
 
   vaultline store list
       Show all configured stores and their status.
@@ -120,6 +129,24 @@ Print shell completion helpers for the selected shell.
 `
 }
 
+func importUsageText() string {
+	return `Usage:
+  vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]
+  vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]
+
+Reads Bitwarden items via the installed bw CLI. Requires an unlocked bw session.
+`
+}
+
+func importSubcommandHelp(name string) string {
+	switch name {
+	case "bitwarden":
+		return "Usage:\n  vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n  vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n\nImport login and secure-note items from Bitwarden via the bw CLI. Bitwarden item names must already fit Vaultline's key rules after the optional prefix and group are added."
+	default:
+		return importUsageText()
+	}
+}
+
 func daemonSubcommandHelp(name string) string {
 	switch name {
 	case "bind":
@@ -144,11 +171,12 @@ func secretUsageText() string {
   vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]
   vaultline secret get <store:key> [--out PATH] [--output raw|json]
   vaultline secret delete <store:key>
+  vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]
   vaultline secret list [store:]
 
 Notes:
-  - Store prefixes use the form store:key and default to local when omitted.
-  - Secret names must use lowercase letters plus . or -.
+  - Store prefixes use the form store:key and default to default when omitted.
+  - Secret names must use lowercase letters, digits, @, . or -.
   - --twice only applies to interactive --stdin input and aborts on mismatch.
 `
 }
@@ -158,7 +186,7 @@ func storeSubcommandHelp(name string) string {
 	case "add":
 		return "Usage:\n  vaultline store add <name> <path>\n\nRegister an existing store path in the local registry."
 	case "init":
-		return "Usage:\n  vaultline store init <name> <path>\n\nCreate a new store at <path>, generate an unseal key, remember it in config, and leave the store unsealed."
+		return "Usage:\n  vaultline store init <name> [path]\n\nCreate a new store at [path], generate an unseal key, remember it in config, and leave the store unsealed. If no path is given, the store is created next to the default store."
 	case "list":
 		return "Usage:\n  vaultline store list\n\nList all configured stores and their status."
 	case "show":
@@ -182,8 +210,10 @@ func secretSubcommandHelp(name string) string {
 		return "Usage:\n  vaultline secret get <store:key> [--out PATH] [--output raw|json]\n\nFetch a secret from the selected store."
 	case "delete":
 		return "Usage:\n  vaultline secret delete <store:key>\n\nDelete a secret from the selected store."
+	case "delete-prefix":
+		return "Usage:\n  vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]\n\nDelete all secrets whose names start with the given prefix. The prefix must end with a dot."
 	case "list":
-		return "Usage:\n  vaultline secret list [store:]\n\nList secrets from one store (default: local)."
+		return "Usage:\n  vaultline secret list [store:]\n\nList secrets from one store (default: default)."
 	default:
 		return secretUsageText()
 	}
@@ -239,6 +269,8 @@ func Run(args []string, out io.Writer) error {
 		return runDaemon(baseURL, remaining[1:], out)
 	case "completion":
 		return runCompletion(remaining[1:], out)
+	case "import":
+		return runImport(baseURL, remaining[1:], out)
 	case "store":
 		return runStore(baseURL, remaining[1:], out)
 	case "secret":
@@ -322,7 +354,7 @@ func tryUnseal(endpoint, passphrase string) ([]byte, int, error) {
 func runUnseal(baseURL string, args []string, out io.Writer) error {
 	if len(args) > 0 {
 		if len(args) == 1 && isHelpArg(args[0]) {
-			fmt.Fprintln(out, "Usage:\n  vaultline unseal\n\nUnseal the local store. Uses a remembered passphrase first, then prompts if needed.")
+			fmt.Fprintln(out, "Usage:\n  vaultline unseal\n\nUnseal the default store. Uses a remembered passphrase first, then prompts if needed.")
 			return nil
 		}
 		return fmt.Errorf("usage: vaultline unseal")
@@ -359,7 +391,7 @@ func runSeal(baseURL string, args []string, out io.Writer) error {
 	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Fprintln(out, "Usage:\n  vaultline seal [--keep-keys]\n\nSeal the local store. By default remembered passphrases are removed from config.")
+			fmt.Fprintln(out, "Usage:\n  vaultline seal [--keep-keys]\n\nSeal the default store. By default remembered passphrases are removed from config.")
 			return nil
 		}
 		return err
@@ -422,6 +454,332 @@ func runCompletion(args []string, out io.Writer) error {
 	default:
 		return fmt.Errorf("unsupported completion shell %q", args[0])
 	}
+}
+
+type bitwardenItem struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Notes    string `json:"notes"`
+	FolderID string `json:"folderId"`
+	Login    struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Totp     string `json:"totp"`
+		URIs     []struct {
+			URI string `json:"uri"`
+		} `json:"uris"`
+	} `json:"login"`
+	Fields []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"fields"`
+	Type int `json:"type"`
+}
+
+type bitwardenFolder struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type importEntry struct {
+	OriginalKey string
+	Key         string
+	Value       []byte
+}
+
+type importAction int
+
+const (
+	importActionSkipExisting importAction = iota
+	importActionSkipMissing
+	importActionAdd
+	importActionUpdate
+)
+
+func runImport(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, importUsageText())
+		return errors.New("import command requires subcommand")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, importUsageText())
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, importSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
+	case "bitwarden":
+		return runImportBitwarden(baseURL, args[1:], out)
+	default:
+		return fmt.Errorf("unknown import subcommand %q", args[0])
+	}
+}
+
+func runImportBitwarden(baseURL string, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("import bitwarden", flag.ContinueOnError)
+	all := fs.Bool("all", false, "import all available Bitwarden items")
+	item := fs.String("item", "", "import only items whose name or id matches this value")
+	prefix := fs.String("prefix", "bitwarden", "prefix for generated keys")
+	storeName := fs.String("store", stores.DefaultStoreName, "target vaultline store")
+	dryRun := fs.Bool("dry-run", false, "show what would be imported without storing anything")
+	addMissing := fs.Bool("add-missing-keys", true, "add keys that do not already exist in vaultline")
+	overwriteExisting := fs.Bool("overwrite-existing-keys", false, "overwrite keys that already exist in vaultline")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Fprintln(out, importSubcommandHelp("bitwarden"))
+			return nil
+		}
+		return err
+	}
+	if !*all && strings.TrimSpace(*item) == "" {
+		return fmt.Errorf("choose either --all or --item")
+	}
+	items, err := loadBitwardenItems()
+	if err != nil {
+		return err
+	}
+	folders, err := loadBitwardenFolders()
+	if err != nil {
+		return err
+	}
+	filter := strings.TrimSpace(*item)
+	added := 0
+	updated := 0
+	skippedExisting := 0
+	skippedMissing := 0
+	invalid := 0
+	shownRenames := map[string]bool{}
+	for _, item := range items {
+		if filter != "" && item.Name != filter && item.ID != filter {
+			continue
+		}
+		entries := bitwardenEntries(item, folderNameForItem(item, folders), *prefix, *storeName)
+		for _, entry := range entries {
+			if entry.OriginalKey != entry.Key && !shownRenames[entry.OriginalKey+"->"+entry.Key] {
+				fmt.Fprintf(out, "%s -> %s\n", entry.OriginalKey, entry.Key)
+				shownRenames[entry.OriginalKey+"->"+entry.Key] = true
+			}
+			storeNameResolved, keyName, err := parseQualifiedKey(entry.Key)
+			if err != nil {
+				fmt.Fprintf(out, "skipping %s: %v\n", entry.Key, err)
+				invalid++
+				continue
+			}
+			if storeNameResolved == "" || keyName == "" || !importKeyPattern.MatchString(keyName) {
+				fmt.Fprintf(out, "skipping %s: violates vaultline naming rules; rename the Bitwarden item, folder, or field\n", entry.Key)
+				invalid++
+				continue
+			}
+			exists, err := secretExists(baseURL, entry.Key)
+			if err != nil {
+				return err
+			}
+			action := chooseImportAction(exists, *addMissing, *overwriteExisting)
+			switch action {
+			case importActionSkipExisting:
+				skippedExisting++
+				continue
+			case importActionSkipMissing:
+				skippedMissing++
+				continue
+			case importActionAdd:
+				if *dryRun {
+					fmt.Fprintf(out, "would add %s\n", entry.Key)
+					added++
+					continue
+				}
+				if err := putSecret(baseURL, entry.Key, entry.Value); err != nil {
+					return err
+				}
+				added++
+			case importActionUpdate:
+				if *dryRun {
+					fmt.Fprintf(out, "would update %s\n", entry.Key)
+					updated++
+					continue
+				}
+				if err := putSecret(baseURL, entry.Key, entry.Value); err != nil {
+					return err
+				}
+				updated++
+			}
+		}
+	}
+	if *dryRun {
+		fmt.Fprintf(out, "dry-run complete: added=%d updated=%d skipped-existing=%d skipped-missing=%d invalid=%d\n", added, updated, skippedExisting, skippedMissing, invalid)
+		return nil
+	}
+	fmt.Fprintf(out, "added=%d updated=%d skipped-existing=%d skipped-missing=%d invalid=%d\n", added, updated, skippedExisting, skippedMissing, invalid)
+	return nil
+}
+
+func loadBitwardenItems() ([]bitwardenItem, error) {
+	cmd := execCommand("bw", "list", "items")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bitwarden import requires an unlocked bw CLI session: %w", err)
+	}
+	var items []bitwardenItem
+	if err := json.Unmarshal(output, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func loadBitwardenFolders() (map[string]string, error) {
+	cmd := execCommand("bw", "list", "folders")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("bitwarden import requires folder access via bw: %w", err)
+	}
+	var folders []bitwardenFolder
+	if err := json.Unmarshal(output, &folders); err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(folders))
+	for _, folder := range folders {
+		result[folder.ID] = strings.TrimSpace(folder.Name)
+	}
+	return result, nil
+}
+
+func chooseImportAction(exists, addMissing, overwriteExisting bool) importAction {
+	if exists {
+		if overwriteExisting {
+			return importActionUpdate
+		}
+		return importActionSkipExisting
+	}
+	if addMissing {
+		return importActionAdd
+	}
+	return importActionSkipMissing
+}
+
+func folderNameForItem(item bitwardenItem, folders map[string]string) string {
+	if item.FolderID == "" {
+		return "nogroup"
+	}
+	if name := normalizeImportComponent(folders[item.FolderID]); name != "" {
+		return name
+	}
+	return "nogroup"
+}
+
+func bitwardenEntries(item bitwardenItem, groupName, prefix, storeName string) []importEntry {
+	originalParts := []string{}
+	if trimmedPrefix := strings.TrimSpace(prefix); trimmedPrefix != "" {
+		originalParts = append(originalParts, trimmedPrefix)
+	}
+	originalParts = append(originalParts, strings.TrimSpace(groupName), strings.TrimSpace(item.Name))
+	originalBase := strings.Join(originalParts, ".")
+	parts := []string{}
+	if normalizedPrefix := strings.Trim(normalizeImportComponent(prefix), "."); normalizedPrefix != "" {
+		parts = append(parts, normalizedPrefix)
+	}
+	parts = append(parts, normalizeImportComponent(groupName), normalizeImportComponent(item.Name))
+	base := strings.Join(parts, ".")
+	entries := []importEntry{}
+	appendEntry := func(suffix string, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		entries = append(entries, importEntry{OriginalKey: storeName + ":" + originalBase + suffix, Key: storeName + ":" + base + suffix, Value: []byte(value)})
+	}
+	appendEntry(".username", item.Login.Username)
+	appendEntry(".password", item.Login.Password)
+	appendEntry(".totp", item.Login.Totp)
+	appendEntry(".note", item.Notes)
+	for index, uri := range item.Login.URIs {
+		suffix := ".uri"
+		if index > 0 {
+			suffix = fmt.Sprintf(".uri.%s", alphabeticOrdinal(index+1))
+		}
+		appendEntry(suffix, uri.URI)
+	}
+	for _, field := range item.Fields {
+		appendEntry(".field."+normalizeImportComponent(field.Name), field.Value)
+	}
+	return entries
+}
+
+func normalizeImportComponent(value string) string {
+	value = strings.ToLower(value)
+	value = strings.ReplaceAll(value, "/", ".")
+	value = strings.ReplaceAll(value, ":", ".")
+	value = strings.ReplaceAll(value, ",", ".")
+	value = strings.ReplaceAll(value, "!", ".")
+	value = strings.ReplaceAll(value, "(", ".")
+	value = strings.ReplaceAll(value, ")", ".")
+	value = strings.ReplaceAll(value, "_", "")
+	value = strings.Join(strings.Fields(value), "")
+	for strings.Contains(value, "..") {
+		value = strings.ReplaceAll(value, "..", ".")
+	}
+	value = strings.Trim(value, ".")
+	return value
+}
+
+func alphabeticOrdinal(index int) string {
+	if index <= 0 {
+		return "a"
+	}
+	value := ""
+	for index > 0 {
+		index--
+		value = string(rune('a'+(index%26))) + value
+		index /= 26
+	}
+	return value
+}
+
+func secretExists(baseURL, qualifiedKey string) (bool, error) {
+	storeName, key, err := parseQualifiedKey(qualifiedKey)
+	if err != nil {
+		return false, err
+	}
+	resp, err := httpClient.Get(secretEndpoint(baseURL, storeName, key))
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return false, fmt.Errorf("lookup failed: %s", body)
+}
+
+func putSecret(baseURL, qualifiedKey string, value []byte) error {
+	storeName, key, err := parseQualifiedKey(qualifiedKey)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(api.SecretRequest{Value: base64.StdEncoding.EncodeToString(value)})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, secretEndpoint(baseURL, storeName, key), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("put secret failed: %s", body)
+	}
+	return nil
 }
 
 func runComplete(args []string, out io.Writer) error {
@@ -505,11 +863,13 @@ compdef _vaultline_complete vaultline
 
 func completeWords(words []string, current string) []string {
 	if len(words) == 0 {
-		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "completion", "--addr", "--output", "--help"}, current)
+		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "import", "completion", "--addr", "--output", "--help"}, current)
 	}
 	switch words[0] {
 	case "completion":
 		return filterCompletions([]string{"bash", "zsh"}, current)
+	case "import":
+		return completeImportWords(words[1:], current)
 	case "store":
 		return completeStoreWords(words[1:], current)
 	case "daemon":
@@ -525,6 +885,22 @@ func completeWords(words []string, current string) []string {
 	}
 }
 
+func completeImportWords(words []string, current string) []string {
+	if len(words) == 0 {
+		return filterCompletions([]string{"bitwarden", "--help"}, current)
+	}
+	if words[0] != "bitwarden" {
+		return nil
+	}
+	if len(words) == 1 {
+		return filterCompletions([]string{"--all", "--item", "--prefix", "--store", "--dry-run", "--add-missing-keys", "--overwrite-existing-keys", "--help"}, current)
+	}
+	if len(words) > 1 && words[len(words)-1] == "--store" {
+		return filterCompletions(listConfiguredStores(true), current)
+	}
+	return filterCompletions([]string{"--all", "--item", "--prefix", "--store", "--dry-run", "--add-missing-keys", "--overwrite-existing-keys", "--help"}, current)
+}
+
 func completeStoreWords(words []string, current string) []string {
 	storeNames := listConfiguredStores(true)
 	if len(words) == 0 {
@@ -536,7 +912,7 @@ func completeStoreWords(words []string, current string) []string {
 		case "show", "unseal", "seal":
 			return filterCompletions(storeNames, current)
 		case "delete", "remove", "rm":
-			return filterCompletions(filterOut(storeNames, "local"), current)
+			return filterCompletions(filterOut(storeNames, stores.DefaultStoreName), current)
 		case "add", "init":
 			return nil
 		case "list":
@@ -574,20 +950,21 @@ func completeDaemonWords(words []string, current string) []string {
 func completeSecretWords(words []string, current string) []string {
 	storePrefixes := listStorePrefixes()
 	if len(words) == 0 {
-		return filterCompletions([]string{"set", "get", "delete", "list", "--help"}, current)
+		return filterCompletions([]string{"set", "get", "delete", "delete-prefix", "list", "--help"}, current)
 	}
 	sub := words[0]
 	flagsForSet := []string{"--name", "--value", "--file", "--stdin", "--twice", "--help"}
 	flagsForGet := []string{"--name", "--out", "--help"}
 	flagsForDelete := []string{"--name", "--help"}
-	if sub == "set" || sub == "get" || sub == "delete" {
+	flagsForDeletePrefix := []string{"--dry-run", "--yes", "--help"}
+	if sub == "set" || sub == "get" || sub == "delete" || sub == "delete-prefix" {
 		if strings.Contains(current, ":") || (len(words) > 1 && words[len(words)-1] == "--name") {
 			return completeQualifiedSecret(current)
 		}
 	}
 	if len(words) == 1 {
 		switch sub {
-		case "set", "get", "delete":
+		case "set", "get", "delete", "delete-prefix":
 			return filterCompletions(append(storePrefixes, "--name", "--help"), current)
 		case "list":
 			return filterCompletions(append(storePrefixes, "--help"), current)
@@ -601,6 +978,9 @@ func completeSecretWords(words []string, current string) []string {
 	}
 	if sub == "delete" {
 		return filterCompletions(append(storePrefixes, flagsForDelete...), current)
+	}
+	if sub == "delete-prefix" {
+		return filterCompletions(append(storePrefixes, flagsForDeletePrefix...), current)
 	}
 	if sub == "list" {
 		return filterCompletions(append(storePrefixes, "--help"), current)
@@ -622,7 +1002,7 @@ func completeQualifiedSecret(current string) []string {
 		}
 	}
 	keys := listSecretKeys(storeName)
-	return filterCompletions(buildQualifiedKeyCompletions(storeName, keys), current)
+	return filterCompletions(buildQualifiedKeyCompletions(storeName, current, keys), current)
 }
 
 func listSecretKeys(storeName string) []string {
@@ -651,21 +1031,49 @@ func listSecretKeys(storeName string) []string {
 	return keys
 }
 
-func buildQualifiedKeyCompletions(storeName string, keys []string) []string {
+func buildQualifiedKeyCompletions(storeName, current string, keys []string) []string {
+	_, keyCurrent, err := parseQualifiedKey(current)
+	if err != nil {
+		if strings.HasSuffix(current, ":") {
+			keyCurrent = ""
+		} else {
+			keyCurrent = strings.TrimPrefix(current, storeName+":")
+		}
+	}
+	basePrefix := ""
+	partial := keyCurrent
+	if strings.Contains(keyCurrent, ".") {
+		lastDot := strings.LastIndex(keyCurrent, ".")
+		basePrefix = keyCurrent[:lastDot+1]
+		partial = keyCurrent[lastDot+1:]
+	}
+	if strings.HasSuffix(keyCurrent, ".") {
+		basePrefix = keyCurrent
+		partial = ""
+	}
 	seen := map[string]bool{}
 	results := make([]string, 0, len(keys))
 	for _, key := range keys {
-		parts := strings.Split(key, ".")
-		for i := range parts {
-			candidate := strings.Join(parts[:i+1], ".")
-			if i < len(parts)-1 {
-				candidate += "."
-			}
-			qualified := storeName + ":" + candidate
-			if !seen[qualified] {
-				seen[qualified] = true
-				results = append(results, qualified)
-			}
+		if !strings.HasPrefix(key, basePrefix) {
+			continue
+		}
+		remainder := strings.TrimPrefix(key, basePrefix)
+		if remainder == "" {
+			continue
+		}
+		parts := strings.SplitN(remainder, ".", 2)
+		next := parts[0]
+		if partial != "" && !strings.HasPrefix(next, partial) {
+			continue
+		}
+		candidate := basePrefix + next
+		if len(parts) > 1 {
+			candidate += "."
+		}
+		qualified := storeName + ":" + candidate
+		if !seen[qualified] {
+			seen[qualified] = true
+			results = append(results, qualified)
 		}
 	}
 	sort.Strings(results)
@@ -693,13 +1101,13 @@ func listConfiguredStores(includeLocal bool) []string {
 	cfg, err := stores.LoadConfig(resolveStoreConfigPath(), localStore)
 	if err != nil {
 		if includeLocal {
-			return []string{"local"}
+			return []string{stores.DefaultStoreName}
 		}
 		return nil
 	}
 	names := make([]string, 0, len(cfg.Stores))
 	for name := range cfg.Stores {
-		if !includeLocal && name == "local" {
+		if !includeLocal && name == stores.DefaultStoreName {
 			continue
 		}
 		names = append(names, name)
@@ -746,9 +1154,9 @@ func listDaemonAllows(addr string) []string {
 
 func resolveLocalStorePath() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
-		return filepath.Join(xdgData, "vaultline", "store")
+		return filepath.Join(xdgData, "vaultline", "stores", stores.DefaultStoreName)
 	}
-	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "store")
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "stores", stores.DefaultStoreName)
 }
 
 func resolveStoreConfigPath() string {
@@ -756,6 +1164,10 @@ func resolveStoreConfigPath() string {
 		return filepath.Join(xdgConfig, "vaultline", "stores.json")
 	}
 	return filepath.Join(os.Getenv("HOME"), ".config", "vaultline", "stores.json")
+}
+
+func defaultNamedStorePath(name string) string {
+	return filepath.Join(filepath.Dir(resolveLocalStorePath()), name)
 }
 
 func resolveDaemonConfigPath() string {
@@ -989,10 +1401,19 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		fmt.Fprintln(out, string(body))
 		return nil
 	case "add", "init":
-		if len(args) != 3 {
-			return fmt.Errorf("usage: vaultline store %s <name> <path>", args[0])
+		if args[0] == "add" && len(args) != 3 {
+			return fmt.Errorf("usage: vaultline store add <name> <path>")
 		}
-		payload, err := json.Marshal(api.StoreCreateRequest{Name: args[1], Path: args[2], Initialize: args[0] == "init"})
+		if args[0] == "init" && (len(args) < 2 || len(args) > 3) {
+			return fmt.Errorf("usage: vaultline store init <name> [path]")
+		}
+		path := ""
+		if len(args) == 3 {
+			path = args[2]
+		} else if args[0] == "init" {
+			path = defaultNamedStorePath(args[1])
+		}
+		payload, err := json.Marshal(api.StoreCreateRequest{Name: args[1], Path: path, Initialize: args[0] == "init"})
 		if err != nil {
 			return err
 		}
@@ -1122,6 +1543,8 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return secretGet(baseURL, args[1:], outputFmt, out)
 	case "delete":
 		return secretDelete(baseURL, args[1:], out)
+	case "delete-prefix":
+		return secretDeletePrefix(baseURL, args[1:], out)
 	case "list":
 		return secretList(baseURL, args[1:], outputFmt, out)
 	default:
@@ -1135,7 +1558,7 @@ func parseQualifiedKey(input string) (string, string, error) {
 		if parts[0] == "" {
 			return "", "", fmt.Errorf("secret key required")
 		}
-		return "local", parts[0], nil
+		return stores.DefaultStoreName, parts[0], nil
 	}
 	if parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("qualified keys must look like store:key")
@@ -1146,7 +1569,7 @@ func parseQualifiedKey(input string) (string, string, error) {
 func parseStoreSelector(input string) (string, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
-		return "local", nil
+		return stores.DefaultStoreName, nil
 	}
 	if !strings.HasSuffix(trimmed, ":") {
 		return "", fmt.Errorf("store selector must look like store:")
@@ -1169,7 +1592,7 @@ func secretListEndpoint(baseURL, storeName string) string {
 func secretSet(baseURL string, args []string, out io.Writer) error {
 	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--value": true, "--file": true, "--name": true})
 	fs := flag.NewFlagSet("secret set", flag.ContinueOnError)
-	name := fs.String("name", "", "secret identifier (lowercase letters, dot, dash)")
+	name := fs.String("name", "", "secret identifier (lowercase letters, digits, @, dot, dash)")
 	value := fs.String("value", "", "literal secret value")
 	filePath := fs.String("file", "", "path to file")
 	useStdin := fs.Bool("stdin", false, "read secret from stdin (mask prompt when running interactively)")
@@ -1320,8 +1743,73 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 	return nil
 }
 
+func secretDeletePrefix(baseURL string, args []string, out io.Writer) error {
+	prefixArg, flagArgs := splitKeyArg(args, map[string]bool{})
+	fs := flag.NewFlagSet("secret delete-prefix", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "show matching keys without deleting them")
+	confirm := fs.Bool("yes", false, "delete all matching keys without prompting")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	prefixInput := prefixArg
+	if prefixInput == "" && fs.NArg() > 0 {
+		prefixInput = fs.Arg(0)
+	}
+	if prefixInput == "" || fs.NArg() > 1 {
+		return fmt.Errorf("usage: vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]")
+	}
+	storeName, prefix, err := parseQualifiedKey(prefixInput)
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(prefix, ".") {
+		return fmt.Errorf("prefix must end with a dot")
+	}
+	entries, err := listSecrets(baseURL, storeName)
+	if err != nil {
+		return err
+	}
+	matches := make([]string, 0)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name, prefix) {
+			matches = append(matches, entry.Name)
+		}
+	}
+	if len(matches) == 0 {
+		return fmt.Errorf("no secrets matched %s:%s", storeName, prefix)
+	}
+	for _, match := range matches {
+		fmt.Fprintf(out, "%s:%s\n", storeName, match)
+	}
+	if *dryRun {
+		fmt.Fprintf(out, "dry-run complete: %d matching secrets\n", len(matches))
+		return nil
+	}
+	if !*confirm {
+		return fmt.Errorf("refusing to delete %d secrets without --yes (or use --dry-run first)", len(matches))
+	}
+	for _, match := range matches {
+		req, err := http.NewRequest(http.MethodDelete, secretEndpoint(baseURL, storeName, match), nil)
+		if err != nil {
+			return err
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			return fmt.Errorf("delete-prefix failed for %s:%s: %s", storeName, match, body)
+		}
+	}
+	fmt.Fprintf(out, "deleted %d secrets from %s\n", len(matches), storeName)
+	return nil
+}
+
 func secretList(baseURL string, args []string, outputFmt string, out io.Writer) error {
-	storeName := "local"
+	storeName := stores.DefaultStoreName
 	if len(args) > 0 {
 		var err error
 		storeName, err = parseStoreSelector(args[0])
@@ -1356,6 +1844,28 @@ func secretList(baseURL string, args []string, outputFmt string, out io.Writer) 
 	}
 	printSecretTable(payload.Keys, out)
 	return nil
+}
+
+func listSecrets(baseURL, storeName string) ([]listEntry, error) {
+	resp, err := httpClient.Get(secretListEndpoint(baseURL, storeName))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list failed: %s", string(body))
+	}
+	var payload struct {
+		Keys []listEntry `json:"keys"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	return payload.Keys, nil
 }
 
 func readSecretInput(literal, filePath string, stdin, twice bool) ([]byte, error) {

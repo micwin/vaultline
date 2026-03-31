@@ -2,7 +2,7 @@
 
 Base URL: `http://127.0.0.1:8428/api/v1`
 
-vaultline exposes a minimal JSON API. `local` remains the default store, but additional named stores live under their own paths and have independent seal state.
+vaultline exposes a minimal JSON API. `default` remains the default store, but additional named stores live under their own paths and have independent seal state.
 
 ## `GET /health`
 Returns daemon status plus all known stores:
@@ -10,11 +10,11 @@ Returns daemon status plus all known stores:
 {
   "status": "ok",
   "version": "0.2.x",
-  "default_store": "local",
+  "default_store": "default",
   "stores": [
     {
-      "name": "local",
-      "path": "/home/micwin/.local/share/vaultline/store",
+      "name": "default",
+      "path": "/home/micwin/.local/share/vaultline/stores/default",
       "default": true,
       "available": true,
       "sealed": false,
@@ -32,10 +32,10 @@ Returns daemon status plus all known stores:
   ]
 }
 ```
-A broken external store does **not** stop the daemon as long as `local` is healthy.
+A broken external store does **not** stop the daemon as long as `default` is healthy.
 
 ## Default-store compatibility routes
-These keep existing clients working and always target `local`:
+These keep existing clients working and always target `default`:
 - `POST /unseal`
 - `POST /seal`
 - `GET /secrets`
@@ -106,7 +106,7 @@ Lists keys for the chosen store:
 ```
 
 ### `PUT /stores/{store}/secrets/{name}`
-- `name` must match `^[a-z.-]+$`
+- `name` must match `^[\p{Ll}\p{Nd}@.-]+$`
 - Body: `{ "value": "base64" }`
 - Response: `{ "version": "hex" }`
 
@@ -125,6 +125,6 @@ Common codes:
 - `SEALED` — target store is locked (`409`)
 - `STORE_NOT_FOUND` — unknown store (`404`)
 - `STORE_UNAVAILABLE` — configured store is missing or broken (`503`)
-- `INVALID_IDENTIFIER` — key violated the naming rules (`400`)
+- `INVALID_IDENTIFIER` — key violated the naming rules (only lowercase letters incl. umlauts, digits, `@`, `.`, `-`) (`400`)
 - `NOT_FOUND` — unknown key (`404`)
 - `STORE_ERROR` — unexpected failure (`500`)

@@ -79,7 +79,7 @@ func TestManagerListIncludesBrokenExternalStore(t *testing.T) {
 		t.Fatalf("list stores: %v", err)
 	}
 	if len(infos) < 2 {
-		t.Fatalf("expected local + broken stores, got %d", len(infos))
+		t.Fatalf("expected default + broken stores, got %d", len(infos))
 	}
 	for _, info := range infos {
 		if info.Name == "broken" {
@@ -103,20 +103,20 @@ func TestManagerUnsealStoresPassphraseAndSealDropsItByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	if err := manager.Unseal("local", "topsecret"); err != nil {
+	if err := manager.Unseal(DefaultStoreName, "topsecret"); err != nil {
 		t.Fatalf("unseal local: %v", err)
 	}
-	info, err := manager.Info("local")
+	info, err := manager.Info(DefaultStoreName)
 	if err != nil {
 		t.Fatalf("local info: %v", err)
 	}
 	if !info.HasKey {
 		t.Fatalf("expected remembered passphrase after unseal")
 	}
-	if err := manager.Seal("local", false); err != nil {
+	if err := manager.Seal(DefaultStoreName, false); err != nil {
 		t.Fatalf("seal local: %v", err)
 	}
-	info, err = manager.Info("local")
+	info, err = manager.Info(DefaultStoreName)
 	if err != nil {
 		t.Fatalf("local info after seal: %v", err)
 	}
@@ -133,20 +133,20 @@ func TestManagerSealKeepsPassphraseWhenRequested(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	if err := manager.Unseal("local", "keepme"); err != nil {
+	if err := manager.Unseal(DefaultStoreName, "keepme"); err != nil {
 		t.Fatalf("unseal local: %v", err)
 	}
-	if err := manager.Seal("local", true); err != nil {
+	if err := manager.Seal(DefaultStoreName, true); err != nil {
 		t.Fatalf("seal local keep-keys: %v", err)
 	}
-	info, err := manager.Info("local")
+	info, err := manager.Info(DefaultStoreName)
 	if err != nil {
 		t.Fatalf("local info after keep-keys: %v", err)
 	}
 	if !info.HasKey {
 		t.Fatalf("expected passphrase to remain when keep-keys is true")
 	}
-	if err := manager.Unseal("local", ""); err != nil {
+	if err := manager.Unseal(DefaultStoreName, ""); err != nil {
 		t.Fatalf("unseal local using remembered passphrase: %v", err)
 	}
 }

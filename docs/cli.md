@@ -6,6 +6,14 @@
 - `--addr 127.0.0.1:8428` — daemon address (default loopback)
 - `--output json|text|raw` — formatting used by commands that print responses
 
+## Import commands
+- `import bitwarden --all [--prefix bitwarden] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
+- `import bitwarden --item <name-or-id> [--prefix bitwarden] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
+- requires the official `bw` CLI plus an unlocked Bitwarden session (`BW_SESSION`)
+- imports login credentials, URIs, TOTP, notes, and custom fields into Vaultline keys such as `project-a:bitwarden.github.password`
+- Bitwarden prefix, folder names, item names, and custom field names are normalized only lightly: uppercase becomes lowercase, whitespace and `_` are removed, `/`, `:`, `,`, `!`, `(`, `)` become `.`, and repeated `.` collapse into one. `-` is preserved because Vaultline keys allow it. Any other illegal characters remain untouched; affected keys are reported and skipped so the source item, folder, or prefix can be fixed explicitly.
+- imports are additive by default (`--add-missing-keys=true`, `--overwrite-existing-keys=false`); use `--overwrite-existing-keys` to refresh already imported keys
+
 ## Shell completion
 - `vaultline completion bash` — prints a bash completion script
 - `vaultline completion zsh` — prints a zsh completion script
@@ -16,7 +24,7 @@
 - subcommands still support their own `--help`, for example `vaultline store init --help`
 
 ## Store model
-- `local` is the default store.
+- `default` is the default store.
 - Additional stores are addressed by prefixing keys with `store:` (for example `project-a:infra.db-password`).
 - Each store has its own path, `.master_salt`, seal state, and passphrase.
 - `store init` generates a random unseal key, prints it once, stores it in the registry config, and leaves the store immediately unsealed.
@@ -28,8 +36,8 @@ $ go run ./cmd/vaultline daemon --store-dir .testrun/store
 vaultline listening on 127.0.0.1:8428
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 health
-status=ok default_store=local
-local   available=true  sealed=false  has_key=true
+status=ok default_store=default
+default  available=true  sealed=false  has_key=true
 
 $ go run ./cmd/vaultline --addr 127.0.0.1:8428 store init project-a .testrun/project-a
 store project-a ready
@@ -54,20 +62,22 @@ store project-a unsealed
 ```
 
 ## Secret commands
-Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `app.payments.api-key`). Prefixing with `store:` selects a non-default store.
+Keys must be lowercase and may include umlauts, digits, `@`, `.` or `-` to express hierarchy (e.g. `mötor-1.api-key@prod`). Prefixing with `store:` selects a non-default store.
 
 - `secret set <store:key> [--value|--file|--stdin] [--twice]`
   - omit all input flags to type the secret interactively when running in a TTY; input is masked
   - add `--twice` together with interactive `--stdin` to require a matching confirmation prompt
-  - omit the prefix to target `local`
+  - omit the prefix to target `default`
 - `secret get <store:key> [--out path] [--output raw|json]`
 - `secret delete <store:key>`
+- `secret delete-prefix <store:prefix.> [--dry-run] [--yes]`
 - `secret list [store:] [--output json]`
   - text output shows `store:key`, update timestamp, and version
+  - `delete-prefix` only deletes keys below a dotted prefix and requires `--yes` unless used with `--dry-run`
 
 ## Store commands
 - `store add <name> <path>` — register an existing store
-- `store init <name> <path>` — create, register, and immediately unseal a new store
+- `store init <name> [path]` — create, register, and immediately unseal a new store; when omitted, the path defaults next to the default store
 - `store list` — show every configured store plus availability/seal state
 - `store show <name>` — dump one store entry as JSON
 - `store unseal <name>` — first tries any remembered passphrase; prompts only if none is stored

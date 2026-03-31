@@ -29,7 +29,7 @@ var (
 	// ErrSecretNotFound is returned when the requested secret file is missing.
 	ErrSecretNotFound = errors.New("vaultline: secret not found")
 
-	keyPattern = regexp.MustCompile(`^[a-z.-]+$`)
+	keyPattern = regexp.MustCompile(`^[\p{Ll}\p{Nd}@.-]+$`)
 )
 
 // Store persists encrypted secrets on disk. Each secret is stored in its own file
@@ -235,7 +235,7 @@ func normalizeKey(value string) (string, error) {
 		return "", errors.New("vaultline: empty identifier")
 	}
 	if !keyPattern.MatchString(value) {
-		return "", fmt.Errorf("vaultline: invalid identifier %q (only lowercase letters, dot, and dash allowed)", value)
+		return "", fmt.Errorf("vaultline: invalid identifier %q (only lowercase letters, digits, @, dot, and dash allowed)", value)
 	}
 	return value, nil
 }

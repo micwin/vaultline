@@ -16,6 +16,10 @@ var storeNamePattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 var ErrStoreUnavailable = errors.New("vaultline: store unavailable")
 
+const (
+	DefaultStoreName = "default"
+)
+
 type Entry struct {
 	Path       string `json:"path"`
 	Passphrase string `json:"passphrase,omitempty"`
@@ -45,7 +49,7 @@ func DefaultConfigPath() string {
 
 func LoadConfig(configPath, localStorePath string) (*Config, error) {
 	cfg := &Config{
-		DefaultStore: "local",
+		DefaultStore: DefaultStoreName,
 		Stores:       map[string]Entry{},
 	}
 	if data, err := os.ReadFile(configPath); err == nil {
@@ -58,11 +62,11 @@ func LoadConfig(configPath, localStorePath string) (*Config, error) {
 	if cfg.Stores == nil {
 		cfg.Stores = map[string]Entry{}
 	}
-	localEntry := cfg.Stores["local"]
-	localEntry.Path = localStorePath
-	cfg.Stores["local"] = localEntry
+	defaultEntry := cfg.Stores[DefaultStoreName]
+	defaultEntry.Path = localStorePath
+	cfg.Stores[DefaultStoreName] = defaultEntry
 	if cfg.DefaultStore == "" {
-		cfg.DefaultStore = "local"
+		cfg.DefaultStore = DefaultStoreName
 	}
 	return cfg, nil
 }
@@ -104,7 +108,7 @@ func NewManager(configPath, localStorePath string) (*Manager, error) {
 		cfg:        cfg,
 		loaded:     map[string]*storage.Store{},
 	}
-	if _, err := manager.ensureStore("local", true); err != nil {
+	if _, err := manager.ensureStore(DefaultStoreName, true); err != nil {
 		return nil, err
 	}
 	return manager, nil
@@ -115,6 +119,9 @@ func (m *Manager) DefaultStore() string {
 }
 
 func (m *Manager) ensureStore(name string, createIfMissing bool) (*storage.Store, error) {
+	if name == "" {
+		name = DefaultStoreName
+	}
 	if store, ok := m.loaded[name]; ok {
 		return store, nil
 	}
@@ -132,7 +139,7 @@ func (m *Manager) ensureStore(name string, createIfMissing bool) (*storage.Store
 	}
 	store, err := storage.New(entry.Path)
 	if err != nil {
-		if name != "local" {
+		if name != DefaultStoreName {
 			return nil, fmt.Errorf("%w: %v", ErrStoreUnavailable, err)
 		}
 		return nil, err
@@ -142,14 +149,17 @@ func (m *Manager) ensureStore(name string, createIfMissing bool) (*storage.Store
 }
 
 func (m *Manager) Store(name string) (*storage.Store, error) {
-	return m.ensureStore(name, name == "local")
+	if name == "" {
+		name = DefaultStoreName
+	}
+	return m.ensureStore(name, name == DefaultStoreName)
 }
 
 func (m *Manager) Add(name, path string, initialize bool) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
-	if name == "local" {
+	if name == DefaultStoreName {
 		return fmt.Errorf("store name %q is reserved", name)
 	}
 	if path == "" {
@@ -171,7 +181,10 @@ func (m *Manager) Add(name, path string, initialize bool) error {
 }
 
 func (m *Manager) Remove(name string) error {
-	if name == "local" {
+	if name == "" {
+		name = DefaultStoreName
+	}
+	if name == DefaultStoreName {
 		return fmt.Errorf("store %q is reserved", name)
 	}
 	if _, ok := m.cfg.Stores[name]; !ok {
@@ -197,6 +210,9 @@ func (m *Manager) ensureStoreWithPath(name, path string, initialize bool) (*stor
 }
 
 func (m *Manager) Seal(name string, keepKeys bool) error {
+	if name == "" {
+		name = DefaultStoreName
+	}
 	store, err := m.Store(name)
 	if err != nil {
 		return err
@@ -212,6 +228,9 @@ func (m *Manager) Seal(name string, keepKeys bool) error {
 }
 
 func (m *Manager) Unseal(name, passphrase string) error {
+	if name == "" {
+		name = DefaultStoreName
+	}
 	entry, ok := m.cfg.Stores[name]
 	if !ok {
 		return fmt.Errorf("unknown store %q", name)
@@ -235,6 +254,9 @@ func (m *Manager) Unseal(name, passphrase string) error {
 }
 
 func (m *Manager) Info(name string) (Info, error) {
+	if name == "" {
+		name = DefaultStoreName
+	}
 	entry, ok := m.cfg.Stores[name]
 	if !ok {
 		return Info{}, fmt.Errorf("unknown store %q", name)

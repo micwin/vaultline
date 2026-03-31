@@ -30,14 +30,14 @@ VALUE="embers-${RANDOM}"
 PROJECT_KEY_NAME="list.project-test"
 PROJECT_VALUE="project-${RANDOM}"
 
-echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set "local:${KEY_NAME}" --stdin >/dev/null
+echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set "default:${KEY_NAME}" --stdin >/dev/null
 XDG_CONFIG_HOME="$(dirname "${STORE_CONFIG_FILE}")" "${VAULTLINE_CLI[@]}" --addr "${ADDR}" store init project-a "${PROJECT_STORE_DIR}" >/dev/null 2>&1 || true
 XDG_CONFIG_HOME="$(dirname "${STORE_CONFIG_FILE}")" "${VAULTLINE_CLI[@]}" --addr "${ADDR}" store unseal project-a >/dev/null 2>&1 || true
 echo "${PROJECT_VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set "project-a:${PROJECT_KEY_NAME}" --stdin >/dev/null
 
-OUTPUT_LOCAL="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list local:)"
-if ! grep -q "local:${KEY_NAME}" <<<"${OUTPUT_LOCAL}"; then
-  echo "[050-secrets-list] local:${KEY_NAME} missing in output" >&2
+OUTPUT_LOCAL="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list default:)"
+if ! grep -q "default:${KEY_NAME}" <<<"${OUTPUT_LOCAL}"; then
+	 echo "[050-secrets-list] default:${KEY_NAME} missing in output" >&2
   exit 1
 fi
 if grep -q "project-a:${PROJECT_KEY_NAME}" <<<"${OUTPUT_LOCAL}"; then

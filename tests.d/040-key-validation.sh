@@ -31,8 +31,9 @@ if [[ ! -f "${SECRET_DATA}" ]]; then
   exit 1
 fi
 
-VALID_NAME="alpha-beta.gamma"
+VALID_NAME="mötor-1.gamma@local"
 INVALID_NAME="Uppercase"
+INVALID_SLASH_NAME="slash/name"
 
 cat "${SECRET_DATA}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${VALID_NAME}" --stdin >/dev/null
 
@@ -44,6 +45,11 @@ fi
 
 if "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${INVALID_NAME}" --value bogus >/dev/null 2>&1; then
   echo "[040-key-validation] invalid name unexpectedly succeeded" >&2
+  exit 1
+fi
+
+if "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set --name "${INVALID_SLASH_NAME}" --value bogus >/dev/null 2>&1; then
+  echo "[040-key-validation] slash name unexpectedly succeeded" >&2
   exit 1
 fi
 

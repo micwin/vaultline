@@ -1,7 +1,7 @@
 # Architecture
 
 ## Storage layout
-- Default local store: `~/.local/share/vaultline/store` (configurable via `--store-dir`)
+- Default store: `~/.local/share/vaultline/stores/default` (configurable via `--store-dir`)
 - Named-store registry: `~/.config/vaultline/stores.json` (configurable via `--config-file`)
 - Each store has its own root:
   - `.master_salt` (base64 encoded)
@@ -10,14 +10,14 @@
 - Fully qualified keys use the form `store:key`; only the prefix selects the store, the secret filename stays `key.vlx`
 
 ## Multi-store model
-- `local` is always registered and points at the daemon's primary store directory.
+- `default` is always registered and points at the daemon's primary store directory.
 - Additional stores are registered in `stores.json` with their own paths and (optionally) remembered passphrases.
 - Every store is an independent `storage.Store`, meaning:
   - separate salt
   - separate passphrase
   - separate seal state
   - separate files on disk
-- Broken or missing external stores do not block daemon startup as long as `local` is healthy. They are surfaced as `available=false` in health/status output.
+- Broken or missing external stores do not block daemon startup as long as `default` is healthy. They are surfaced as `available=false` in health/status output.
 
 ## Key derivation
 For each store independently:
@@ -28,7 +28,7 @@ For each store independently:
 5. Unless `--keep-keys` is used, sealing also removes any remembered passphrase from the registry config
 
 ## API surface
-Compatibility routes still target `local`:
+Compatibility routes still target `default`:
 - `GET /api/v1/health`
 - `POST /api/v1/unseal`
 - `POST /api/v1/seal`

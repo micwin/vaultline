@@ -32,8 +32,8 @@ go test ./...
 TMP_VALUE="$(mktemp "${STATE_DIR}/value.XXXX")"
 
 echo "[010-smoke] storing and reading secret through CLI"
-printf "super-secret" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set local:smoke.token --stdin >/dev/null
-"${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret get local:smoke.token --out "${TMP_VALUE}" >/dev/null
+printf "super-secret" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set default:smoke.token --stdin >/dev/null
+"${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret get default:smoke.token --out "${TMP_VALUE}" >/dev/null
 
 if [[ "$(cat "${TMP_VALUE}")" != "super-secret" ]]; then
   echo "[010-smoke] secret mismatch"

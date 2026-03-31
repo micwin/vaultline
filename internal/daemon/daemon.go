@@ -27,7 +27,7 @@ func Run(addr, storeDir, sealFile, storeConfigPath, daemonConfigPath, version st
 	}
 	if infos, err := manager.List(); err == nil {
 		for _, info := range infos {
-			if info.Name != "local" && !info.Available {
+			if info.Name != stores.DefaultStoreName && !info.Available {
 				log.Printf("store %s unavailable: %s", info.Name, info.Error)
 			}
 		}
@@ -36,7 +36,7 @@ func Run(addr, storeDir, sealFile, storeConfigPath, daemonConfigPath, version st
 	if err != nil {
 		return err
 	}
-	store, err := manager.Store("local")
+	store, err := manager.Store(stores.DefaultStoreName)
 	if err != nil {
 		return err
 	}

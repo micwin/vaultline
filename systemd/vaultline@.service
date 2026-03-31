@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/local/bin/vaultline daemon --store-dir /home/%i/.local/share/vaultline/store --seal-file /home/%i/.config/vaultline/seal
+ExecStart=/usr/local/bin/vaultline daemon --store-dir /home/%i/.local/share/vaultline/stores/default --seal-file /home/%i/.config/vaultline/seal --config-file /home/%i/.config/vaultline/stores.json --daemon-config-file /home/%i/.config/vaultline/daemon.json
 Restart=on-failure
 
 [Install]

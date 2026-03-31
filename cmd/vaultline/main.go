@@ -57,9 +57,9 @@ func shouldStartDaemon(args []string) bool {
 
 func resolveDefaultStore() string {
 	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
-		return filepath.Join(xdgData, "vaultline", "store")
+		return filepath.Join(xdgData, "vaultline", "stores", "default")
 	}
-	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "store")
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "stores", "default")
 }
 
 func resolveDefaultStoreConfig() string {

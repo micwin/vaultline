@@ -703,20 +703,33 @@ func runExportZip(baseURL string, args []string, out io.Writer) error {
 }
 
 func runImportZip(baseURL string, args []string, out io.Writer) error {
+	positional := make([]string, 0, 2)
+	flagArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			flagArgs = append(flagArgs, arg)
+			continue
+		}
+		if len(positional) < 2 {
+			positional = append(positional, arg)
+			continue
+		}
+		flagArgs = append(flagArgs, arg)
+	}
 	fs := flag.NewFlagSet("import zip", flag.ContinueOnError)
 	overwrite := fs.Bool("overwrite", false, "overwrite the target store if it already exists")
 	fs.SetOutput(io.Discard)
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	if fs.NArg() != 2 {
+	if len(positional) != 2 || fs.NArg() != 0 {
 		return fmt.Errorf("usage: vaultline import zip <zip-file> <store> [--overwrite]")
 	}
-	data, err := os.ReadFile(fs.Arg(0))
+	data, err := os.ReadFile(positional[0])
 	if err != nil {
 		return err
 	}
-	endpoint := baseURL + "/api/v1/stores/" + url.PathEscape(fs.Arg(1)) + "/restore.zip?overwrite=" + fmt.Sprint(*overwrite)
+	endpoint := baseURL + "/api/v1/stores/" + url.PathEscape(positional[1]) + "/restore.zip?overwrite=" + fmt.Sprint(*overwrite)
 	resp, err := httpClient.Post(endpoint, "application/zip", bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -731,9 +744,9 @@ func runImportZip(baseURL string, args []string, out io.Writer) error {
 		return err
 	}
 	if *overwrite {
-		fmt.Fprintf(out, "restored %v secrets into %s (overwritten)\n", payload["imported"], fs.Arg(1))
+		fmt.Fprintf(out, "restored %v secrets into %s (overwritten)\n", payload["imported"], positional[1])
 	} else {
-		fmt.Fprintf(out, "restored %v secrets into %s\n", payload["imported"], fs.Arg(1))
+		fmt.Fprintf(out, "restored %v secrets into %s\n", payload["imported"], positional[1])
 	}
 	fmt.Fprintln(out, "store is sealed; unseal it before use")
 	return nil

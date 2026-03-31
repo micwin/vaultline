@@ -12,13 +12,17 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/term"
 
+	"github.com/micwin/vaultline/internal/daemoncfg"
 	"github.com/micwin/vaultline/pkg/api"
+	"github.com/micwin/vaultline/pkg/stores"
 	"github.com/micwin/vaultline/pkg/version"
 )
 
@@ -38,11 +42,15 @@ func usageText() string {
   vaultline daemon unallow <addr> <cidr-or-ip>
       Manage extra remote listeners. Loopback remains implicitly available.
 
+  vaultline completion bash|zsh
+      Print shell completion for the requested shell.
+
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
       unseal                     Prompt for passphrase and unlock the local store
       seal                       Reseal the local store
       daemon-stop                Ask the daemon to shut down
+      completion                 Print shell completion helpers
       daemon                     Manage extra daemon binds and allow rules
       store add|init|list|show|unseal|seal|delete
                                  Manage named stores
@@ -100,6 +108,15 @@ func daemonUsageText() string {
 
   vaultline daemon unallow <addr> <cidr-or-ip>
       Remove one allow rule from a listener.
+`
+}
+
+func completionUsageText() string {
+	return `Usage:
+  vaultline completion bash
+  vaultline completion zsh
+
+Print shell completion helpers for the selected shell.
 `
 }
 
@@ -208,6 +225,8 @@ func Run(args []string, out io.Writer) error {
 	}
 
 	switch remaining[0] {
+	case "__complete":
+		return runComplete(remaining[1:], out)
 	case "health":
 		return runHealth(baseURL, *output, out)
 	case "unseal":
@@ -218,6 +237,8 @@ func Run(args []string, out io.Writer) error {
 		return runDaemonStop(baseURL, out)
 	case "daemon":
 		return runDaemon(baseURL, remaining[1:], out)
+	case "completion":
+		return runCompletion(remaining[1:], out)
 	case "store":
 		return runStore(baseURL, remaining[1:], out)
 	case "secret":
@@ -381,6 +402,377 @@ func runDaemonStop(baseURL string, out io.Writer) error {
 	}
 	fmt.Fprintln(out, "vaultline shutdown requested")
 	return nil
+}
+
+func runCompletion(args []string, out io.Writer) error {
+	if len(args) != 1 || isHelpArg(args[0]) {
+		fmt.Fprintln(out, completionUsageText())
+		if len(args) == 1 && isHelpArg(args[0]) {
+			return nil
+		}
+		return fmt.Errorf("usage: vaultline completion <bash|zsh>")
+	}
+	switch args[0] {
+	case "bash":
+		fmt.Fprint(out, bashCompletionScript())
+		return nil
+	case "zsh":
+		fmt.Fprint(out, zshCompletionScript())
+		return nil
+	default:
+		return fmt.Errorf("unsupported completion shell %q", args[0])
+	}
+}
+
+func runComplete(args []string, out io.Writer) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: vaultline __complete <current> [words...]")
+	}
+	current := args[0]
+	words := args[1:]
+	for _, item := range completeWords(words, current) {
+		fmt.Fprintln(out, item)
+	}
+	return nil
+}
+
+func bashCompletionScript() string {
+	return `# bash completion for vaultline
+_vaultline_complete() {
+  local cur
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  local wordbreaks="$COMP_WORDBREAKS"
+  COMP_WORDBREAKS=${COMP_WORDBREAKS//:}
+  local out
+  out="$(${COMP_WORDS[0]} __complete "$cur" "${COMP_WORDS[@]:1:$COMP_CWORD}" 2>/dev/null)"
+  COMP_WORDBREAKS="$wordbreaks"
+  if [[ -n "$out" ]]; then
+    mapfile -t COMPREPLY < <(compgen -W "$out" -- "$cur")
+    if [[ ${#COMPREPLY[@]} -gt 0 ]]; then
+      local nospace=0
+      local candidate
+      for candidate in "${COMPREPLY[@]}"; do
+        if [[ "$candidate" == *: || "$candidate" == *. ]]; then
+          nospace=1
+          break
+        fi
+      done
+      if [[ "$nospace" -eq 1 ]]; then
+        compopt -o nospace 2>/dev/null || true
+      fi
+    fi
+  fi
+}
+complete -o default -F _vaultline_complete vaultline
+`
+}
+
+func zshCompletionScript() string {
+	return `#compdef vaultline
+_vaultline_complete() {
+  local cur
+  cur="${words[CURRENT]}"
+  local -a prev
+  if (( CURRENT > 2 )); then
+    prev=("${(@)words[2,CURRENT-1]}")
+  else
+    prev=()
+  fi
+  local -a suggestions
+  suggestions=("${(@f)$(vaultline __complete "$cur" "${prev[@]}" 2>/dev/null)}")
+  if (( ${#suggestions[@]} )); then
+    local nospace=0
+    local item
+    for item in ${suggestions[@]}; do
+      if [[ "$item" == *: || "$item" == *. ]]; then
+        nospace=1
+        break
+      fi
+    done
+    if (( nospace )); then
+      compadd -Q -S '' -- ${suggestions[@]}
+    else
+      _describe 'vaultline' suggestions
+    fi
+  else
+    _files
+  fi
+}
+compdef _vaultline_complete vaultline
+`
+}
+
+func completeWords(words []string, current string) []string {
+	if len(words) == 0 {
+		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "completion", "--addr", "--output", "--help"}, current)
+	}
+	switch words[0] {
+	case "completion":
+		return filterCompletions([]string{"bash", "zsh"}, current)
+	case "store":
+		return completeStoreWords(words[1:], current)
+	case "daemon":
+		return completeDaemonWords(words[1:], current)
+	case "secret":
+		return completeSecretWords(words[1:], current)
+	case "seal":
+		return filterCompletions([]string{"--keep-keys", "--help"}, current)
+	case "unseal":
+		return filterCompletions([]string{"--help"}, current)
+	default:
+		return nil
+	}
+}
+
+func completeStoreWords(words []string, current string) []string {
+	storeNames := listConfiguredStores(true)
+	if len(words) == 0 {
+		return filterCompletions([]string{"add", "init", "list", "show", "unseal", "seal", "delete", "remove", "rm", "--help"}, current)
+	}
+	sub := words[0]
+	if len(words) == 1 {
+		switch sub {
+		case "show", "unseal", "seal":
+			return filterCompletions(storeNames, current)
+		case "delete", "remove", "rm":
+			return filterCompletions(filterOut(storeNames, "local"), current)
+		case "add", "init":
+			return nil
+		case "list":
+			return filterCompletions([]string{"--help"}, current)
+		}
+	}
+	if sub == "seal" && len(words) >= 2 {
+		return filterCompletions([]string{"--keep-keys", "--help"}, current)
+	}
+	return nil
+}
+
+func completeDaemonWords(words []string, current string) []string {
+	binds := listDaemonBindAddrs()
+	if len(words) == 0 {
+		return filterCompletions([]string{"bind", "list-binds", "unbind", "allow", "list-allows", "unallow", "--help"}, current)
+	}
+	sub := words[0]
+	if len(words) == 1 {
+		switch sub {
+		case "unbind", "list-allows", "allow", "unallow":
+			return filterCompletions(binds, current)
+		case "bind":
+			return nil
+		case "list-binds":
+			return filterCompletions([]string{"--help"}, current)
+		}
+	}
+	if sub == "unallow" && len(words) == 2 {
+		return filterCompletions(listDaemonAllows(words[1]), current)
+	}
+	return nil
+}
+
+func completeSecretWords(words []string, current string) []string {
+	storePrefixes := listStorePrefixes()
+	if len(words) == 0 {
+		return filterCompletions([]string{"set", "get", "delete", "list", "--help"}, current)
+	}
+	sub := words[0]
+	flagsForSet := []string{"--name", "--value", "--file", "--stdin", "--twice", "--help"}
+	flagsForGet := []string{"--name", "--out", "--help"}
+	flagsForDelete := []string{"--name", "--help"}
+	if sub == "set" || sub == "get" || sub == "delete" {
+		if strings.Contains(current, ":") || (len(words) > 1 && words[len(words)-1] == "--name") {
+			return completeQualifiedSecret(current)
+		}
+	}
+	if len(words) == 1 {
+		switch sub {
+		case "set", "get", "delete":
+			return filterCompletions(append(storePrefixes, "--name", "--help"), current)
+		case "list":
+			return filterCompletions(append(storePrefixes, "--help"), current)
+		}
+	}
+	if sub == "set" {
+		return filterCompletions(append(storePrefixes, flagsForSet...), current)
+	}
+	if sub == "get" {
+		return filterCompletions(append(storePrefixes, flagsForGet...), current)
+	}
+	if sub == "delete" {
+		return filterCompletions(append(storePrefixes, flagsForDelete...), current)
+	}
+	if sub == "list" {
+		return filterCompletions(append(storePrefixes, "--help"), current)
+	}
+	return nil
+}
+
+func completeQualifiedSecret(current string) []string {
+	storeName, _, err := parseQualifiedKey(current)
+	if err != nil {
+		if strings.HasSuffix(current, ":") {
+			store := strings.TrimSuffix(current, ":")
+			if store == "" {
+				return listStorePrefixes()
+			}
+			storeName = store
+		} else {
+			return nil
+		}
+	}
+	keys := listSecretKeys(storeName)
+	return filterCompletions(buildQualifiedKeyCompletions(storeName, keys), current)
+}
+
+func listSecretKeys(storeName string) []string {
+	baseURL, err := buildBaseURL("127.0.0.1:8428")
+	if err != nil {
+		return nil
+	}
+	resp, err := httpClient.Get(secretListEndpoint(baseURL, storeName))
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var payload struct {
+		Keys []listEntry `json:"keys"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(payload.Keys))
+	for _, entry := range payload.Keys {
+		keys = append(keys, entry.Name)
+	}
+	return keys
+}
+
+func buildQualifiedKeyCompletions(storeName string, keys []string) []string {
+	seen := map[string]bool{}
+	results := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts := strings.Split(key, ".")
+		for i := range parts {
+			candidate := strings.Join(parts[:i+1], ".")
+			if i < len(parts)-1 {
+				candidate += "."
+			}
+			qualified := storeName + ":" + candidate
+			if !seen[qualified] {
+				seen[qualified] = true
+				results = append(results, qualified)
+			}
+		}
+	}
+	sort.Strings(results)
+	return results
+}
+
+func filterCompletions(items []string, current string) []string {
+	seen := map[string]bool{}
+	filtered := make([]string, 0, len(items))
+	for _, item := range items {
+		if item == "" || seen[item] {
+			continue
+		}
+		if current == "" || strings.HasPrefix(item, current) {
+			seen[item] = true
+			filtered = append(filtered, item)
+		}
+	}
+	sort.Strings(filtered)
+	return filtered
+}
+
+func listConfiguredStores(includeLocal bool) []string {
+	localStore := resolveLocalStorePath()
+	cfg, err := stores.LoadConfig(resolveStoreConfigPath(), localStore)
+	if err != nil {
+		if includeLocal {
+			return []string{"local"}
+		}
+		return nil
+	}
+	names := make([]string, 0, len(cfg.Stores))
+	for name := range cfg.Stores {
+		if !includeLocal && name == "local" {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func listStorePrefixes() []string {
+	names := listConfiguredStores(true)
+	prefixes := make([]string, 0, len(names))
+	for _, name := range names {
+		prefixes = append(prefixes, name+":")
+	}
+	return prefixes
+}
+
+func listDaemonBindAddrs() []string {
+	mgr, err := daemoncfg.New(resolveDaemonConfigPath())
+	if err != nil {
+		return nil
+	}
+	binds := mgr.ListBinds()
+	addrs := make([]string, 0, len(binds))
+	for _, bind := range binds {
+		addrs = append(addrs, bind.Addr)
+	}
+	sort.Strings(addrs)
+	return addrs
+}
+
+func listDaemonAllows(addr string) []string {
+	mgr, err := daemoncfg.New(resolveDaemonConfigPath())
+	if err != nil {
+		return nil
+	}
+	allows, err := mgr.ListAllows(addr)
+	if err != nil {
+		return nil
+	}
+	sort.Strings(allows)
+	return allows
+}
+
+func resolveLocalStorePath() string {
+	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+		return filepath.Join(xdgData, "vaultline", "store")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "store")
+}
+
+func resolveStoreConfigPath() string {
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "vaultline", "stores.json")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".config", "vaultline", "stores.json")
+}
+
+func resolveDaemonConfigPath() string {
+	if xdgConfig := os.Getenv("XDG_CONFIG_HOME"); xdgConfig != "" {
+		return filepath.Join(xdgConfig, "vaultline", "daemon.json")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".config", "vaultline", "daemon.json")
+}
+
+func filterOut(items []string, remove string) []string {
+	filtered := make([]string, 0, len(items))
+	for _, item := range items {
+		if item != remove {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
 }
 
 func runDaemon(baseURL string, args []string, out io.Writer) error {

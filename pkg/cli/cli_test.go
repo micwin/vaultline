@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/micwin/vaultline/internal/daemoncfg"
+	"github.com/micwin/vaultline/pkg/stores"
 )
 
 func TestParseQualifiedKey(t *testing.T) {
@@ -83,5 +87,91 @@ func TestConfirmSecretMatchMismatch(t *testing.T) {
 func TestReadSecretInputTwiceRequiresInteractiveStdin(t *testing.T) {
 	if _, err := readSecretInput("", "", true, true); err == nil || !strings.Contains(err.Error(), "interactive") {
 		t.Fatalf("expected interactive stdin error, got %v", err)
+	}
+}
+
+func TestCompleteStoreCommandsSuggestConfiguredStores(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
+	manager, err := stores.NewManager(resolveStoreConfigPath(), resolveLocalStorePath())
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Add("project-a", filepath.Join(tmp, "project-a"), true); err != nil {
+		t.Fatalf("add store: %v", err)
+	}
+	suggestions := completeWords([]string{"store", "show"}, "pr")
+	if len(suggestions) != 1 || suggestions[0] != "project-a" {
+		t.Fatalf("unexpected store suggestions: %#v", suggestions)
+	}
+	secretSuggestions := completeWords([]string{"secret", "set"}, "pro")
+	if len(secretSuggestions) != 1 || secretSuggestions[0] != "project-a:" {
+		t.Fatalf("unexpected secret suggestions: %#v", secretSuggestions)
+	}
+}
+
+func TestCompleteDaemonCommandsSuggestBindsAndAllows(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmp)
+	mgr, err := daemoncfg.New(resolveDaemonConfigPath())
+	if err != nil {
+		t.Fatalf("new daemon cfg: %v", err)
+	}
+	if err := mgr.AddBind("0.0.0.0:8384"); err != nil {
+		t.Fatalf("add bind: %v", err)
+	}
+	if err := mgr.AddAllow("0.0.0.0:8384", "192.168.3.1"); err != nil {
+		t.Fatalf("add allow: %v", err)
+	}
+	bindSuggestions := completeWords([]string{"daemon", "unbind"}, "0.0")
+	if len(bindSuggestions) != 1 || bindSuggestions[0] != "0.0.0.0:8384" {
+		t.Fatalf("unexpected bind suggestions: %#v", bindSuggestions)
+	}
+	allowSuggestions := completeWords([]string{"daemon", "unallow", "0.0.0.0:8384"}, "192")
+	if len(allowSuggestions) != 1 || allowSuggestions[0] != "192.168.3.1/32" {
+		t.Fatalf("unexpected allow suggestions: %#v", allowSuggestions)
+	}
+}
+
+func TestCompletionScriptsMentionHiddenCompleteCommand(t *testing.T) {
+	if !strings.Contains(bashCompletionScript(), "__complete") {
+		t.Fatalf("bash completion script missing hidden completion hook")
+	}
+	if !strings.Contains(zshCompletionScript(), "__complete") {
+		t.Fatalf("zsh completion script missing hidden completion hook")
+	}
+}
+
+func TestCompletionScriptsSuppressSpaceForHierarchies(t *testing.T) {
+	if !strings.Contains(bashCompletionScript(), "compopt -o nospace") {
+		t.Fatalf("bash completion script should suppress spaces for hierarchical completions")
+	}
+	if !strings.Contains(zshCompletionScript(), "compadd -Q -S ''") {
+		t.Fatalf("zsh completion script should suppress spaces for hierarchical completions")
+	}
+}
+
+func TestBuildQualifiedKeyCompletionsBuildsSegmentPrefixes(t *testing.T) {
+	items := buildQualifiedKeyCompletions("project-a", []string{"app.db.password", "app.api.key", "root"})
+	expected := []string{
+		"project-a:app.",
+		"project-a:app.api.",
+		"project-a:app.api.key",
+		"project-a:app.db.",
+		"project-a:app.db.password",
+		"project-a:root",
+	}
+	for _, want := range expected {
+		found := false
+		for _, got := range items {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing completion %q in %#v", want, items)
+		}
 	}
 }

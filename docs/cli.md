@@ -6,6 +6,15 @@
 - `--addr 127.0.0.1:8428` — daemon address (default loopback)
 - `--output json|text|raw` — formatting used by commands that print responses
 
+## Shell completion
+- `vaultline completion bash` — prints a bash completion script
+- `vaultline completion zsh` — prints a zsh completion script
+- completion is dynamic for:
+  - configured store names
+  - configured daemon bind addresses
+  - configured allow rules for `daemon unallow`
+- subcommands still support their own `--help`, for example `vaultline store init --help`
+
 ## Store model
 - `local` is the default store.
 - Additional stores are addressed by prefixing keys with `store:` (for example `project-a:infra.db-password`).

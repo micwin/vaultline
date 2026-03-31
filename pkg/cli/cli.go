@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -31,6 +32,7 @@ import (
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 var execCommand = exec.Command
 var importKeyPattern = regexp.MustCompile(`^[\p{Ll}\p{Nd}@.-]+$`)
+var listConfiguredStoresFn = listConfiguredStores
 
 func usageText() string {
 	return fmt.Sprintf("vaultline %s\n\n", version.Version) + `Usage:
@@ -172,6 +174,7 @@ func secretUsageText() string {
   vaultline secret get <store:key> [--out PATH] [--output raw|json]
   vaultline secret delete <store:key>
   vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]
+  vaultline secret glob <store-glob:key-glob>
   vaultline secret list [store:]
 
 Notes:
@@ -212,6 +215,8 @@ func secretSubcommandHelp(name string) string {
 		return "Usage:\n  vaultline secret delete <store:key>\n\nDelete a secret from the selected store."
 	case "delete-prefix":
 		return "Usage:\n  vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]\n\nDelete all secrets whose names start with the given prefix. The prefix must end with a dot."
+	case "glob":
+		return "Usage:\n  vaultline secret glob <store-glob:key-glob>\n\nSearch secrets using shell-style glob patterns. If the store part is omitted, all stores are searched."
 	case "list":
 		return "Usage:\n  vaultline secret list [store:]\n\nList secrets from one store (default: default)."
 	default:
@@ -482,9 +487,11 @@ type bitwardenFolder struct {
 }
 
 type importEntry struct {
-	OriginalKey string
-	Key         string
-	Value       []byte
+	OriginalKey  string
+	Key          string
+	OriginalBase string
+	Base         string
+	Value        []byte
 }
 
 type importAction int
@@ -558,9 +565,9 @@ func runImportBitwarden(baseURL string, args []string, out io.Writer) error {
 		}
 		entries := bitwardenEntries(item, folderNameForItem(item, folders), *prefix, *storeName)
 		for _, entry := range entries {
-			if entry.OriginalKey != entry.Key && !shownRenames[entry.OriginalKey+"->"+entry.Key] {
-				fmt.Fprintf(out, "%s -> %s\n", entry.OriginalKey, entry.Key)
-				shownRenames[entry.OriginalKey+"->"+entry.Key] = true
+			if entry.OriginalBase != entry.Base && !shownRenames[entry.OriginalBase+"->"+entry.Base] {
+				fmt.Fprintf(out, "%s -> %s\n", entry.OriginalBase, entry.Base)
+				shownRenames[entry.OriginalBase+"->"+entry.Base] = true
 			}
 			storeNameResolved, keyName, err := parseQualifiedKey(entry.Key)
 			if err != nil {
@@ -687,7 +694,13 @@ func bitwardenEntries(item bitwardenItem, groupName, prefix, storeName string) [
 		if strings.TrimSpace(value) == "" {
 			return
 		}
-		entries = append(entries, importEntry{OriginalKey: storeName + ":" + originalBase + suffix, Key: storeName + ":" + base + suffix, Value: []byte(value)})
+		entries = append(entries, importEntry{
+			OriginalKey:  storeName + ":" + originalBase + suffix,
+			Key:          storeName + ":" + base + suffix,
+			OriginalBase: storeName + ":" + originalBase,
+			Base:         storeName + ":" + base,
+			Value:        []byte(value),
+		})
 	}
 	appendEntry(".username", item.Login.Username)
 	appendEntry(".password", item.Login.Password)
@@ -714,7 +727,7 @@ func normalizeImportComponent(value string) string {
 	value = strings.ReplaceAll(value, "!", ".")
 	value = strings.ReplaceAll(value, "(", ".")
 	value = strings.ReplaceAll(value, ")", ".")
-	value = strings.ReplaceAll(value, "_", "")
+	value = strings.ReplaceAll(value, "_", "-")
 	value = strings.Join(strings.Fields(value), "")
 	for strings.Contains(value, "..") {
 		value = strings.ReplaceAll(value, "..", ".")
@@ -896,13 +909,13 @@ func completeImportWords(words []string, current string) []string {
 		return filterCompletions([]string{"--all", "--item", "--prefix", "--store", "--dry-run", "--add-missing-keys", "--overwrite-existing-keys", "--help"}, current)
 	}
 	if len(words) > 1 && words[len(words)-1] == "--store" {
-		return filterCompletions(listConfiguredStores(true), current)
+		return filterCompletions(listConfiguredStoresFn(true), current)
 	}
 	return filterCompletions([]string{"--all", "--item", "--prefix", "--store", "--dry-run", "--add-missing-keys", "--overwrite-existing-keys", "--help"}, current)
 }
 
 func completeStoreWords(words []string, current string) []string {
-	storeNames := listConfiguredStores(true)
+	storeNames := listConfiguredStoresFn(true)
 	if len(words) == 0 {
 		return filterCompletions([]string{"add", "init", "list", "show", "unseal", "seal", "delete", "remove", "rm", "--help"}, current)
 	}
@@ -950,7 +963,7 @@ func completeDaemonWords(words []string, current string) []string {
 func completeSecretWords(words []string, current string) []string {
 	storePrefixes := listStorePrefixes()
 	if len(words) == 0 {
-		return filterCompletions([]string{"set", "get", "delete", "delete-prefix", "list", "--help"}, current)
+		return filterCompletions([]string{"set", "get", "delete", "delete-prefix", "glob", "list", "--help"}, current)
 	}
 	sub := words[0]
 	flagsForSet := []string{"--name", "--value", "--file", "--stdin", "--twice", "--help"}
@@ -964,7 +977,7 @@ func completeSecretWords(words []string, current string) []string {
 	}
 	if len(words) == 1 {
 		switch sub {
-		case "set", "get", "delete", "delete-prefix":
+		case "set", "get", "delete", "delete-prefix", "glob":
 			return filterCompletions(append(storePrefixes, "--name", "--help"), current)
 		case "list":
 			return filterCompletions(append(storePrefixes, "--help"), current)
@@ -981,6 +994,9 @@ func completeSecretWords(words []string, current string) []string {
 	}
 	if sub == "delete-prefix" {
 		return filterCompletions(append(storePrefixes, flagsForDeletePrefix...), current)
+	}
+	if sub == "glob" {
+		return filterCompletions(append(storePrefixes, "--help"), current)
 	}
 	if sub == "list" {
 		return filterCompletions(append(storePrefixes, "--help"), current)
@@ -1117,7 +1133,7 @@ func listConfiguredStores(includeLocal bool) []string {
 }
 
 func listStorePrefixes() []string {
-	names := listConfiguredStores(true)
+	names := listConfiguredStoresFn(true)
 	prefixes := make([]string, 0, len(names))
 	for _, name := range names {
 		prefixes = append(prefixes, name+":")
@@ -1545,6 +1561,8 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return secretDelete(baseURL, args[1:], out)
 	case "delete-prefix":
 		return secretDeletePrefix(baseURL, args[1:], out)
+	case "glob":
+		return secretGlob(baseURL, args[1:], outputFmt, out)
 	case "list":
 		return secretList(baseURL, args[1:], outputFmt, out)
 	default:
@@ -1806,6 +1824,69 @@ func secretDeletePrefix(baseURL string, args []string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "deleted %d secrets from %s\n", len(matches), storeName)
 	return nil
+}
+
+func secretGlob(baseURL string, args []string, outputFmt string, out io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: vaultline secret glob <store-glob:key-glob>")
+	}
+	storePattern, keyPattern := parseGlobPattern(args[0])
+	storeNames := listConfiguredStoresFn(true)
+	entries := make([]listEntry, 0)
+	for _, storeName := range storeNames {
+		matched, err := path.Match(storePattern, storeName)
+		if err != nil {
+			return err
+		}
+		if !matched {
+			continue
+		}
+		storeEntries, err := listSecrets(baseURL, storeName)
+		if err != nil {
+			// unavailable/broken stores are skipped in this convenience search
+			continue
+		}
+		for _, entry := range storeEntries {
+			qualified := storeName + ":" + entry.Name
+			matched, err := path.Match(keyPattern, entry.Name)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				matched, err = path.Match(storePattern+":"+keyPattern, qualified)
+				if err != nil {
+					return err
+				}
+			}
+			if matched {
+				entry.Name = qualified
+				entries = append(entries, entry)
+			}
+		}
+	}
+	if outputFmt == "json" {
+		payload := map[string]any{"keys": entries}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(out, string(data))
+		return nil
+	}
+	printSecretTable(entries, out)
+	return nil
+}
+
+func parseGlobPattern(input string) (string, string) {
+	parts := strings.SplitN(strings.TrimSpace(input), ":", 2)
+	if len(parts) == 1 {
+		return "*", parts[0]
+	}
+	storePattern := parts[0]
+	if storePattern == "" {
+		storePattern = "*"
+	}
+	return storePattern, parts[1]
 }
 
 func secretList(baseURL string, args []string, outputFmt string, out io.Writer) error {

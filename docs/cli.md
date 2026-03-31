@@ -11,7 +11,7 @@
 - `import bitwarden --item <name-or-id> [--prefix bitwarden] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
 - requires the official `bw` CLI plus an unlocked Bitwarden session (`BW_SESSION`)
 - imports login credentials, URIs, TOTP, notes, and custom fields into Vaultline keys such as `project-a:bitwarden.github.password`
-- Bitwarden prefix, folder names, item names, and custom field names are normalized only lightly: uppercase becomes lowercase, whitespace and `_` are removed, `/`, `:`, `,`, `!`, `(`, `)` become `.`, and repeated `.` collapse into one. `-` is preserved because Vaultline keys allow it. Any other illegal characters remain untouched; affected keys are reported and skipped so the source item, folder, or prefix can be fixed explicitly.
+- Bitwarden prefix, folder names, item names, and custom field names are normalized only lightly: uppercase becomes lowercase, whitespace is removed, `_` becomes `-`, and `/`, `:`, `,`, `!`, `(`, `)` become `.`, and repeated `.` collapse into one. Any other illegal characters remain untouched; affected keys are reported and skipped so the source item, folder, or prefix can be fixed explicitly.
 - imports are additive by default (`--add-missing-keys=true`, `--overwrite-existing-keys=false`); use `--overwrite-existing-keys` to refresh already imported keys
 
 ## Shell completion
@@ -71,9 +71,11 @@ Keys must be lowercase and may include umlauts, digits, `@`, `.` or `-` to expre
 - `secret get <store:key> [--out path] [--output raw|json]`
 - `secret delete <store:key>`
 - `secret delete-prefix <store:prefix.> [--dry-run] [--yes]`
+- `secret glob <store-glob:key-glob>`
 - `secret list [store:] [--output json]`
   - text output shows `store:key`, update timestamp, and version
   - `delete-prefix` only deletes keys below a dotted prefix and requires `--yes` unless used with `--dry-run`
+  - `glob` searches qualified keys with shell-style wildcards, e.g. `bitw*:*.zf.*test*`
 
 ## Store commands
 - `store add <name> <path>` — register an existing store

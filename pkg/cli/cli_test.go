@@ -279,7 +279,7 @@ func TestNormalizeImportComponent(t *testing.T) {
 	if got := normalizeImportComponent("A-B:C/D"); got != "a-b.c.d" {
 		t.Fatalf("unexpected punctuation normalization: %q", got)
 	}
-	if got := normalizeImportComponent("Hello_World!(Prod)"); got != "helloworld.prod" {
+	if got := normalizeImportComponent("Hello_World!(Prod)"); got != "hello-world.prod" {
 		t.Fatalf("unexpected underscore/bang/paren normalization: %q", got)
 	}
 	if got := normalizeImportComponent("Alpha,Beta"); got != "alpha.beta" {
@@ -355,5 +355,44 @@ func TestSecretDeletePrefixDryRun(t *testing.T) {
 	}
 	if strings.Contains(output, "other.key") {
 		t.Fatalf("delete-prefix matched unrelated key: %s", output)
+	}
+}
+
+func TestParseGlobPattern(t *testing.T) {
+	storePattern, keyPattern := parseGlobPattern("bitw*:*.zf.*test*")
+	if storePattern != "bitw*" || keyPattern != "*.zf.*test*" {
+		t.Fatalf("unexpected parsed glob pattern: %q %q", storePattern, keyPattern)
+	}
+	storePattern, keyPattern = parseGlobPattern("*password*")
+	if storePattern != "*" || keyPattern != "*password*" {
+		t.Fatalf("unexpected implicit-store glob pattern: %q %q", storePattern, keyPattern)
+	}
+}
+
+func TestSecretGlobMatchesAcrossStores(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/stores/default/secrets":
+			_, _ = w.Write([]byte(`{"keys":[{"name":"app.demo.one"}]}`))
+		case "/api/v1/stores/project-a/secrets":
+			_, _ = w.Write([]byte(`{"keys":[{"name":"team.zf.test-user"},{"name":"team.other"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	origStores := listConfiguredStoresFn
+	defer func() { listConfiguredStoresFn = origStores }()
+	listConfiguredStoresFn = func(includeLocal bool) []string { return []string{"default", "project-a"} }
+	var out bytes.Buffer
+	if err := secretGlob(server.URL, []string{"project-*:*.zf.*test*"}, "text", &out); err != nil {
+		t.Fatalf("secret glob: %v", err)
+	}
+	output := out.String()
+	if !strings.Contains(output, "project-a:team.zf.test-user") {
+		t.Fatalf("expected match in output: %s", output)
+	}
+	if strings.Contains(output, "team.other") || strings.Contains(output, "default:app.demo.one") {
+		t.Fatalf("unexpected non-matching entries in output: %s", output)
 	}
 }

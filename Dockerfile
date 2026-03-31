@@ -11,9 +11,8 @@ FROM debian:bookworm-slim
 RUN useradd -u 10001 -r vaultline
 WORKDIR /app
 COPY --from=build /out/vaultline /usr/local/bin/vaultline
-RUN mkdir -p /var/lib/vaultline && chown vaultline:vaultline /var/lib/vaultline
-VOLUME ["/var/lib/vaultline"]
+RUN mkdir -p /var/lib/vaultline/store /var/lib/vaultline/config && chown -R vaultline:vaultline /var/lib/vaultline
+VOLUME ["/var/lib/vaultline/store", "/var/lib/vaultline/config"]
 EXPOSE 8428
 USER vaultline
-ENV VAULTLINE_STORE_DIR=/var/lib/vaultline
-ENTRYPOINT ["vaultline","daemon","--addr","0.0.0.0:8428","--store-dir","/var/lib/vaultline"]
+ENTRYPOINT ["vaultline","daemon","--addr","0.0.0.0:8428","--store-dir","/var/lib/vaultline/store","--config-file","/var/lib/vaultline/config/stores.json","--daemon-config-file","/var/lib/vaultline/config/daemon.json"]

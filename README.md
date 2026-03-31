@@ -55,7 +55,13 @@ vaultline/
 7. Expose an additional remote listener with `go run ./cmd/vaultline --addr 127.0.0.1:8428 daemon bind 0.0.0.0:8384`, then explicitly allow clients with `go run ./cmd/vaultline --addr 127.0.0.1:8428 daemon allow 0.0.0.0:8384 192.168.3.0/24`. `daemon list-binds`, `daemon list-allows`, `daemon unallow`, and `daemon unbind` persist their changes in the daemon config so they survive restarts. Loopback remains implicitly available at all times.
 
 ## Container image
-- Build and run with Docker Compose: `VAULTLINE_PASSPHRASE=my-pass docker compose up --build`. Data persists under `./data/`.
+- Build and run with Docker Compose: `VAULTLINE_PASSPHRASE=my-pass docker compose up --build`.
+- The container daemon binds on `0.0.0.0:8428` so it can serve traffic through Docker port publishing.
+- Persistent state is split across two mounts:
+  - `./data/store` → `/var/lib/vaultline/store`
+  - `./data/config` → `/var/lib/vaultline/config`
+- Inside the container, administrative commands remain local-only. Use `docker exec vaultline vaultline ...` for tasks such as `vaultline daemon bind ...`, `vaultline daemon allow ...`, or `vaultline store list`.
+- Editing the mounted config files (`stores.json`, `daemon.json`) from outside the container is supported, but changes only take effect after the daemon restarts unless you apply them via `docker exec ... vaultline daemon ...`.
 - The multi-stage `Dockerfile` produces a single `vaultline` binary; runtime image defaults to the non-root `vaultline` user and exposes 8428/TCP.
 
 ## Releasing

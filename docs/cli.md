@@ -74,6 +74,7 @@ Keys must be lowercase and may include `.` or `-` to express hierarchy (e.g. `ap
 - `daemon list-allows <addr>` — list allow rules for one listener
 - `daemon unallow <addr> <cidr-or-ip>` — remove one allow rule
 - loopback stays implicitly available for the CLI and cannot be managed through these commands
+- in the container image, these commands are intended to be run through `docker exec vaultline vaultline ...`; remote clients cannot access bind/allow management over HTTP
 
 ## Diagnostics
 - `vaultline health` — prints daemon status, default store, the status of every configured store, and all extra daemon binds plus their allow counts/state

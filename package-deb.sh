@@ -4,6 +4,41 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="${ROOT_DIR}/dist"
 PKG_DIR="${DIST_DIR}/debian"
+INSTALL_DEB=false
+NEW_VERSION=""
+
+usage() {
+  cat <<'EOF'
+Usage: ./package-deb.sh [VERSION] [--install]
+
+Options:
+  VERSION    Optional semantic version to write into `pkg/version/version.go`
+  --install  Install the freshly built Debian package via `sudo dpkg -i`
+  -h, --help Show this help text
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --install)
+      INSTALL_DEB=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -n "${NEW_VERSION}" ]]; then
+        echo "Unexpected argument: $1" >&2
+        usage
+        exit 1
+      fi
+      NEW_VERSION="$1"
+      shift
+      ;;
+  esac
+done
 
 CURRENT_VERSION=$(grep 'const Version' "${ROOT_DIR}/pkg/version/version.go" | awk -F'"' '{print $2}')
 if [[ -z "${CURRENT_VERSION}" ]]; then
@@ -11,9 +46,7 @@ if [[ -z "${CURRENT_VERSION}" ]]; then
   exit 1
 fi
 
-if [[ $# -gt 0 ]]; then
-  NEW_VERSION="$1"
-else
+if [[ -z "${NEW_VERSION}" ]]; then
   IFS='.' read -r major minor patch <<<"${CURRENT_VERSION}"
   patch=$((patch + 1))
   NEW_VERSION="${major}.${minor}.${patch}"
@@ -60,6 +93,11 @@ chmod 755 usr/local/bin/vaultline
 chmod 644 usr/share/doc/vaultline/README
 
 cd "${DIST_DIR}"
-dpkg-deb --build debian "vaultline_${NEW_VERSION}_amd64.deb"
+DEB_PATH="vaultline_${NEW_VERSION}_amd64.deb"
+dpkg-deb --build debian "${DEB_PATH}"
+
+if [[ "${INSTALL_DEB}" == "true" ]]; then
+  sudo dpkg -i "${DEB_PATH}"
+fi
 
 echo "Built vaultline ${NEW_VERSION}"

@@ -65,6 +65,6 @@ vaultline/
 - The multi-stage `Dockerfile` produces a single `vaultline` binary; runtime image defaults to the non-root `vaultline` user and exposes 8428/TCP.
 
 ## Releasing
-- Bump the version by running `./package-deb.sh` (or pass the desired version explicitly: `./package-deb.sh 0.2.8`). This updates `pkg/version/version.go` and builds `dist/vaultline_<version>_amd64.deb`.
+- Bump the version by running `./package-deb.sh` (or pass the desired version explicitly: `./package-deb.sh 0.2.8`). This updates `pkg/version/version.go` and builds `dist/vaultline_<version>_amd64.deb`. Add `--install` to install the package immediately after the build (`./package-deb.sh --install` or `./package-deb.sh 0.2.8 --install`).
 - Merge `develop` into `release` and push `release` to GitHub. The `Release vaultline` workflow tags the commit, builds the Debian package, and publishes a GitHub Release with the `.deb` attached.
 - After the workflow finishes, download artifacts from the Releases page or install via `dpkg -i dist/vaultline_<version>_amd64.deb`.

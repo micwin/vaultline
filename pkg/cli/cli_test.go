@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -358,6 +361,28 @@ func TestSecretDeletePrefixDryRun(t *testing.T) {
 	}
 }
 
+func TestStoreSealAcceptsKeepKeysAfterStoreName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/stores/project-a/seal" {
+			http.NotFound(w, r)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if !strings.Contains(string(body), `"keep_keys":true`) {
+			t.Fatalf("expected keep_keys=true payload, got %s", body)
+		}
+		_, _ = w.Write([]byte(`{"sealed":true,"store":"project-a","keep_keys":true}`))
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	if err := runStore(server.URL, []string{"seal", "project-a", "--keep-keys"}, &out); err != nil {
+		t.Fatalf("run store seal: %v", err)
+	}
+}
+
 func TestParseGlobPattern(t *testing.T) {
 	storePattern, keyPattern := parseGlobPattern("bitw*:*.zf.*test*")
 	if storePattern != "bitw*" || keyPattern != "*.zf.*test*" {
@@ -394,5 +419,44 @@ func TestSecretGlobMatchesAcrossStores(t *testing.T) {
 	}
 	if strings.Contains(output, "team.other") || strings.Contains(output, "default:app.demo.one") {
 		t.Fatalf("unexpected non-matching entries in output: %s", output)
+	}
+}
+
+func TestZipDirectoryRoundTrip(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src")
+	if err := os.MkdirAll(filepath.Join(src, "secrets"), 0o755); err != nil {
+		t.Fatalf("mkdir src: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".master_salt"), []byte("salt"), 0o600); err != nil {
+		t.Fatalf("write salt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "secrets", "demo.vlx"), []byte("payload"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	zipPath := filepath.Join(tmp, "store.zip")
+	if err := zipDirectory(src, zipPath); err != nil {
+		t.Fatalf("zip directory: %v", err)
+	}
+	if _, err := zip.OpenReader(zipPath); err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	dst := filepath.Join(tmp, "dst")
+	if err := unzipToDirectory(zipPath, dst); err != nil {
+		t.Fatalf("unzip directory: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dst, "secrets", "demo.vlx"))
+	if err != nil {
+		t.Fatalf("read unzipped secret: %v", err)
+	}
+	if string(data) != "payload" {
+		t.Fatalf("unexpected unzipped payload: %q", data)
+	}
+}
+
+func TestDefaultExportZipName(t *testing.T) {
+	name := defaultExportZipName("default")
+	if !strings.HasPrefix(name, "default-") || !strings.HasSuffix(name, ".zip") {
+		t.Fatalf("unexpected export zip name: %q", name)
 	}
 }

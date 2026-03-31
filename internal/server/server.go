@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/micwin/vaultline/pkg/api"
 	"github.com/micwin/vaultline/pkg/storage"
 	"github.com/micwin/vaultline/pkg/stores"
+	"github.com/micwin/vaultline/pkg/storezip"
 )
 
 type daemonNetwork interface {
@@ -65,6 +68,8 @@ func New(manager *stores.Manager, network daemonNetwork, version string) *Server
 	s.router.Post("/api/v1/stores", s.handleCreateStore)
 	s.router.Get("/api/v1/stores/{store}", s.handleStoreInfo)
 	s.router.Delete("/api/v1/stores/{store}", s.handleDeleteStore)
+	s.router.Get("/api/v1/stores/{store}/backup.zip", s.handleStoreBackup)
+	s.router.Post("/api/v1/stores/{store}/restore.zip", s.handleStoreRestore)
 	s.router.Post("/api/v1/stores/{store}/seal", s.handleStoreSeal)
 	s.router.Post("/api/v1/stores/{store}/unseal", s.handleStoreUnseal)
 	s.router.Get("/api/v1/stores/{store}/secrets", s.handleListSecrets)
@@ -183,6 +188,94 @@ func (s *Server) handleDeleteStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleStoreBackup(w http.ResponseWriter, r *http.Request) {
+	storeName := chi.URLParam(r, "store")
+	info, err := s.stores.Info(storeName)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "STORE_NOT_FOUND", err.Error())
+		return
+	}
+	if !info.Available {
+		writeError(w, http.StatusServiceUnavailable, "STORE_UNAVAILABLE", info.Error)
+		return
+	}
+	tmpDir, err := os.MkdirTemp("", "vaultline-backup")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+	zipPath := filepath.Join(tmpDir, fmt.Sprintf("%s-%s.zip", storeName, time.Now().Format("2006-01-02")))
+	if err := storezip.WriteDirectory(info.Path, zipPath); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(zipPath)))
+	http.ServeFile(w, r, zipPath)
+}
+
+func (s *Server) handleStoreRestore(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRequest(r) {
+		writeError(w, http.StatusForbidden, "LOOPBACK_ONLY", "store restore is only available via loopback")
+		return
+	}
+	storeName := chi.URLParam(r, "store")
+	overwrite := r.URL.Query().Get("overwrite") == "true"
+	tmpFile, err := os.CreateTemp("", "vaultline-restore-*.zip")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_ERROR", err.Error())
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := io.Copy(tmpFile, r.Body); err != nil {
+		tmpFile.Close()
+		writeError(w, http.StatusBadRequest, "STORE_RESTORE_FAILED", err.Error())
+		return
+	}
+	tmpFile.Close()
+
+	entry, exists := s.stores.Entry(storeName)
+	storePath := entry.Path
+	if !exists {
+		storePath = stores.DefaultStorePath(storeName)
+		if storeName == stores.DefaultStoreName {
+			storePath = stores.DefaultStorePath(stores.DefaultStoreName)
+		}
+	}
+	if exists && !overwrite {
+		writeError(w, http.StatusConflict, "STORE_EXISTS", fmt.Sprintf("store %s already exists; use overwrite", storeName))
+		return
+	}
+	if overwrite {
+		if err := os.RemoveAll(storePath); err != nil {
+			writeError(w, http.StatusInternalServerError, "STORE_RESTORE_FAILED", err.Error())
+			return
+		}
+	}
+	if err := os.MkdirAll(storePath, 0o700); err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_RESTORE_FAILED", err.Error())
+		return
+	}
+	if err := storezip.ReadDirectory(tmpFile.Name(), storePath); err != nil {
+		writeError(w, http.StatusBadRequest, "STORE_RESTORE_FAILED", err.Error())
+		return
+	}
+	if storeName != stores.DefaultStoreName {
+		if err := s.stores.Add(storeName, storePath, false); err != nil {
+			writeError(w, http.StatusBadRequest, "STORE_RESTORE_FAILED", err.Error())
+			return
+		}
+	}
+	s.stores.Forget(storeName)
+	count, err := storezip.CountSecrets(storePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "STORE_RESTORE_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"store": storeName, "imported": count, "sealed": true})
 }
 
 func (s *Server) handleListBinds(w http.ResponseWriter, r *http.Request) {

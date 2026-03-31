@@ -47,6 +47,17 @@ func DefaultConfigPath() string {
 	return filepath.Join(os.Getenv("HOME"), ".config", "vaultline", "stores.json")
 }
 
+func DefaultDataRoot() string {
+	if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+		return filepath.Join(xdgData, "vaultline", "stores")
+	}
+	return filepath.Join(os.Getenv("HOME"), ".local", "share", "vaultline", "stores")
+}
+
+func DefaultStorePath(name string) string {
+	return filepath.Join(DefaultDataRoot(), name)
+}
+
 func LoadConfig(configPath, localStorePath string) (*Config, error) {
 	cfg := &Config{
 		DefaultStore: DefaultStoreName,
@@ -116,6 +127,21 @@ func NewManager(configPath, localStorePath string) (*Manager, error) {
 
 func (m *Manager) DefaultStore() string {
 	return m.cfg.DefaultStore
+}
+
+func (m *Manager) Entry(name string) (Entry, bool) {
+	if name == "" {
+		name = DefaultStoreName
+	}
+	entry, ok := m.cfg.Stores[name]
+	return entry, ok
+}
+
+func (m *Manager) Forget(name string) {
+	if name == "" {
+		name = DefaultStoreName
+	}
+	delete(m.loaded, name)
 }
 
 func (m *Manager) ensureStore(name string, createIfMissing bool) (*storage.Store, error) {

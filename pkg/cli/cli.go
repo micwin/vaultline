@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -54,6 +55,16 @@ func usageText() string {
   vaultline import bitwarden [flags]
       Import secrets from Bitwarden via the bw CLI.
 
+  vaultline import zip <zip-file> <store>
+      Restore a store directory from a zip archive.
+
+  vaultline export zip <store> <zip-file>
+      Archive a store directory into a zip file.
+
+  vaultline backup zip <store> [zip-file]
+  vaultline restore zip <zip-file> <store> [--overwrite]
+      Archive and restore full sealed stores.
+
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
       unseal                     Prompt for passphrase and unlock the default store
@@ -61,6 +72,9 @@ func usageText() string {
       daemon-stop                Ask the daemon to shut down
       completion                 Print shell completion helpers
       import                     Import external secrets
+      backup                     Back up a full store
+      restore                    Restore a full store backup
+      export                     Export stores
       daemon                     Manage extra daemon binds and allow rules
       store add|init|list|show|unseal|seal|delete
                                  Manage named stores
@@ -135,8 +149,35 @@ func importUsageText() string {
 	return `Usage:
   vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]
   vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]
+  vaultline import zip <zip-file> <store>
 
 Reads Bitwarden items via the installed bw CLI. Requires an unlocked bw session.
+`
+}
+
+func exportUsageText() string {
+	return `Usage:
+  vaultline export zip <store> [zip-file]
+
+Archive a full store directory into a zip file. When the file is omitted,
+Vaultline uses <store>-YYYY-MM-DD.zip in the current directory.
+`
+}
+
+func backupUsageText() string {
+	return `Usage:
+  vaultline backup zip <store> [zip-file]
+
+Archive a full store directory into a zip file. When the file is omitted,
+Vaultline uses <store>-YYYY-MM-DD.zip in the current directory.
+`
+}
+
+func restoreUsageText() string {
+	return `Usage:
+  vaultline restore zip <zip-file> <store> [--overwrite]
+
+Restore a full store from a zip backup. Existing stores require --overwrite.
 `
 }
 
@@ -144,9 +185,34 @@ func importSubcommandHelp(name string) string {
 	switch name {
 	case "bitwarden":
 		return "Usage:\n  vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n  vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n\nImport login and secure-note items from Bitwarden via the bw CLI. No prefix is added unless --prefix is specified. Bitwarden item names must already fit Vaultline's key rules after the optional prefix and group are added."
+	case "zip":
+		return "Usage:\n  vaultline import zip <zip-file> <store>\n\nRestore a store directory from a zip archive into the target store path."
 	default:
 		return importUsageText()
 	}
+}
+
+func exportSubcommandHelp(name string) string {
+	switch name {
+	case "zip":
+		return "Usage:\n  vaultline export zip <store> [zip-file]\n\nArchive a full store directory into a zip file. If no file is given, Vaultline writes <store>-YYYY-MM-DD.zip in the current directory."
+	default:
+		return exportUsageText()
+	}
+}
+
+func backupSubcommandHelp(name string) string {
+	if name == "zip" {
+		return "Usage:\n  vaultline backup zip <store> [zip-file]\n\nArchive a full store directory into a zip file."
+	}
+	return backupUsageText()
+}
+
+func restoreSubcommandHelp(name string) string {
+	if name == "zip" {
+		return "Usage:\n  vaultline restore zip <zip-file> <store> [--overwrite]\n\nRestore a full store from a zip backup. Existing stores require --overwrite."
+	}
+	return restoreUsageText()
 }
 
 func daemonSubcommandHelp(name string) string {
@@ -276,6 +342,12 @@ func Run(args []string, out io.Writer) error {
 		return runCompletion(remaining[1:], out)
 	case "import":
 		return runImport(baseURL, remaining[1:], out)
+	case "backup":
+		return runBackup(baseURL, remaining[1:], out)
+	case "restore":
+		return runRestore(baseURL, remaining[1:], out)
+	case "export":
+		return runExport(baseURL, remaining[1:], out)
 	case "store":
 		return runStore(baseURL, remaining[1:], out)
 	case "secret":
@@ -519,9 +591,152 @@ func runImport(baseURL string, args []string, out io.Writer) error {
 	switch args[0] {
 	case "bitwarden":
 		return runImportBitwarden(baseURL, args[1:], out)
+	case "zip":
+		return runImportZip(baseURL, args[1:], out)
 	default:
 		return fmt.Errorf("unknown import subcommand %q", args[0])
 	}
+}
+
+func runExport(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, exportUsageText())
+		return errors.New("export command requires subcommand")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, exportUsageText())
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, exportSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
+	case "zip":
+		return runExportZip(baseURL, args[1:], out)
+	default:
+		return fmt.Errorf("unknown export subcommand %q", args[0])
+	}
+}
+
+func runBackup(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, backupUsageText())
+		return errors.New("backup command requires subcommand")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, backupUsageText())
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, backupSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
+	case "zip":
+		return runExportZip(baseURL, args[1:], out)
+	default:
+		return fmt.Errorf("unknown backup subcommand %q", args[0])
+	}
+}
+
+func runRestore(baseURL string, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintln(out, restoreUsageText())
+		return errors.New("restore command requires subcommand")
+	}
+	if isHelpArg(args[0]) {
+		fmt.Fprintln(out, restoreUsageText())
+		return nil
+	}
+	if len(args) > 1 && isHelpArg(args[1]) {
+		fmt.Fprintln(out, restoreSubcommandHelp(args[0]))
+		return nil
+	}
+	switch args[0] {
+	case "zip":
+		return runImportZip(baseURL, args[1:], out)
+	default:
+		return fmt.Errorf("unknown restore subcommand %q", args[0])
+	}
+}
+
+func runExportZip(baseURL string, args []string, out io.Writer) error {
+	if len(args) < 1 || len(args) > 2 {
+		return fmt.Errorf("usage: vaultline export zip <store> [zip-file]")
+	}
+	storeName := args[0]
+	targetZip := ""
+	if len(args) == 2 {
+		targetZip = args[1]
+	} else {
+		targetZip = defaultExportZipName(storeName)
+	}
+	resp, err := httpClient.Get(baseURL + "/api/v1/stores/" + url.PathEscape(storeName) + "/backup.zip")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("backup failed: %s", body)
+	}
+	if err := os.MkdirAll(filepath.Dir(targetZip), 0o755); err != nil {
+		return err
+	}
+	file, err := os.Create(targetZip)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "backuped %s to %s\n", storeName, targetZip)
+	fmt.Fprintln(out, "note: the unseal key is not included in the backup")
+	if storeName == stores.DefaultStoreName {
+		fmt.Fprintln(out, "show it with: cat ~/.config/vaultline/seal")
+	} else {
+		fmt.Fprintf(out, "show it with: jq -r '.stores[\"%s\"].passphrase' ~/.config/vaultline/stores.json\n", storeName)
+	}
+	return nil
+}
+
+func runImportZip(baseURL string, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("import zip", flag.ContinueOnError)
+	overwrite := fs.Bool("overwrite", false, "overwrite the target store if it already exists")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 2 {
+		return fmt.Errorf("usage: vaultline import zip <zip-file> <store> [--overwrite]")
+	}
+	data, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	endpoint := baseURL + "/api/v1/stores/" + url.PathEscape(fs.Arg(1)) + "/restore.zip?overwrite=" + fmt.Sprint(*overwrite)
+	resp, err := httpClient.Post(endpoint, "application/zip", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("restore failed: %s", body)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return err
+	}
+	if *overwrite {
+		fmt.Fprintf(out, "restored %v secrets into %s (overwritten)\n", payload["imported"], fs.Arg(1))
+	} else {
+		fmt.Fprintf(out, "restored %v secrets into %s\n", payload["imported"], fs.Arg(1))
+	}
+	fmt.Fprintln(out, "store is sealed; unseal it before use")
+	return nil
 }
 
 func runImportBitwarden(baseURL string, args []string, out io.Writer) error {
@@ -653,6 +868,14 @@ func loadBitwardenFolders() (map[string]string, error) {
 	return result, nil
 }
 
+func loadStoreManager() (*stores.Manager, error) {
+	return stores.NewManager(resolveStoreConfigPath(), resolveLocalStorePath())
+}
+
+func defaultExportZipName(storeName string) string {
+	return fmt.Sprintf("%s-%s.zip", storeName, time.Now().Format("2006-01-02"))
+}
+
 func chooseImportAction(exists, addMissing, overwriteExisting bool) importAction {
 	if exists {
 		if overwriteExisting {
@@ -769,6 +992,95 @@ func secretExists(baseURL, qualifiedKey string) (bool, error) {
 	return false, fmt.Errorf("lookup failed: %s", body)
 }
 
+func zipDirectory(sourceDir, targetZip string) error {
+	if err := os.MkdirAll(filepath.Dir(targetZip), 0o755); err != nil {
+		return err
+	}
+	file, err := os.Create(targetZip)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	archive := zip.NewWriter(file)
+	defer archive.Close()
+	return filepath.Walk(sourceDir, func(pathName string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(sourceDir, pathName)
+		if err != nil {
+			return err
+		}
+		if relPath == "." {
+			return nil
+		}
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(relPath)
+		if info.IsDir() {
+			header.Name += "/"
+			_, err = archive.CreateHeader(header)
+			return err
+		}
+		header.Method = zip.Deflate
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		src, err := os.Open(pathName)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		_, err = io.Copy(writer, src)
+		return err
+	})
+}
+
+func unzipToDirectory(zipPath, targetDir string) error {
+	archive, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	for _, file := range archive.File {
+		targetPath := filepath.Join(targetDir, filepath.Clean(file.Name))
+		if !strings.HasPrefix(targetPath, filepath.Clean(targetDir)+string(os.PathSeparator)) && filepath.Clean(targetPath) != filepath.Clean(targetDir) {
+			return fmt.Errorf("invalid zip path %q", file.Name)
+		}
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(targetPath, file.Mode()); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			return err
+		}
+		src, err := file.Open()
+		if err != nil {
+			return err
+		}
+		dst, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, file.Mode())
+		if err != nil {
+			src.Close()
+			return err
+		}
+		_, copyErr := io.Copy(dst, src)
+		closeErr := dst.Close()
+		src.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	return nil
+}
+
 func putSecret(baseURL, qualifiedKey string, value []byte) error {
 	storeName, key, err := parseQualifiedKey(qualifiedKey)
 	if err != nil {
@@ -876,13 +1188,19 @@ compdef _vaultline_complete vaultline
 
 func completeWords(words []string, current string) []string {
 	if len(words) == 0 {
-		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "import", "completion", "--addr", "--output", "--help"}, current)
+		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
 	}
 	switch words[0] {
 	case "completion":
 		return filterCompletions([]string{"bash", "zsh"}, current)
 	case "import":
 		return completeImportWords(words[1:], current)
+	case "export":
+		return completeExportWords(words[1:], current)
+	case "backup":
+		return completeBackupWords(words[1:], current)
+	case "restore":
+		return completeRestoreWords(words[1:], current)
 	case "store":
 		return completeStoreWords(words[1:], current)
 	case "daemon":
@@ -900,9 +1218,19 @@ func completeWords(words []string, current string) []string {
 
 func completeImportWords(words []string, current string) []string {
 	if len(words) == 0 {
-		return filterCompletions([]string{"bitwarden", "--help"}, current)
+		return filterCompletions([]string{"bitwarden", "zip", "--help"}, current)
 	}
-	if words[0] != "bitwarden" {
+	switch words[0] {
+	case "zip":
+		if len(words) == 1 {
+			return nil
+		}
+		if len(words) == 2 {
+			return filterCompletions(listConfiguredStoresFn(true), current)
+		}
+		return nil
+	case "bitwarden":
+	default:
 		return nil
 	}
 	if len(words) == 1 {
@@ -912,6 +1240,48 @@ func completeImportWords(words []string, current string) []string {
 		return filterCompletions(listConfiguredStoresFn(true), current)
 	}
 	return filterCompletions([]string{"--all", "--item", "--prefix", "--store", "--dry-run", "--add-missing-keys", "--overwrite-existing-keys", "--help"}, current)
+}
+
+func completeExportWords(words []string, current string) []string {
+	if len(words) == 0 {
+		return filterCompletions([]string{"zip", "--help"}, current)
+	}
+	if words[0] != "zip" {
+		return nil
+	}
+	if len(words) == 1 {
+		return filterCompletions(listConfiguredStoresFn(true), current)
+	}
+	return nil
+}
+
+func completeBackupWords(words []string, current string) []string {
+	if len(words) == 0 {
+		return filterCompletions([]string{"zip", "--help"}, current)
+	}
+	if words[0] != "zip" {
+		return nil
+	}
+	if len(words) == 1 {
+		return filterCompletions(listConfiguredStoresFn(true), current)
+	}
+	return nil
+}
+
+func completeRestoreWords(words []string, current string) []string {
+	if len(words) == 0 {
+		return filterCompletions([]string{"zip", "--help"}, current)
+	}
+	if words[0] != "zip" {
+		return nil
+	}
+	if len(words) == 1 {
+		return nil
+	}
+	if len(words) == 2 {
+		return filterCompletions(listConfiguredStoresFn(true), current)
+	}
+	return filterCompletions([]string{"--overwrite", "--help"}, current)
 }
 
 func completeStoreWords(words []string, current string) []string {
@@ -1472,20 +1842,24 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		fmt.Fprintf(out, "store %s removed\n", args[1])
 		return nil
 	case "unseal", "seal":
+		storeArg, flagArgs := splitKeyArg(args[1:], map[string]bool{})
 		fs := flag.NewFlagSet("store "+args[0], flag.ContinueOnError)
 		keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
 		fs.SetOutput(io.Discard)
-		if err := fs.Parse(args[1:]); err != nil {
+		if err := fs.Parse(flagArgs); err != nil {
 			if err == flag.ErrHelp {
 				fmt.Fprintln(out, storeSubcommandHelp(args[0]))
 				return nil
 			}
 			return err
 		}
-		if fs.NArg() != 1 {
+		storeRaw := storeArg
+		if storeRaw == "" && fs.NArg() > 0 {
+			storeRaw = fs.Arg(0)
+		}
+		if storeRaw == "" || fs.NArg() > 1 {
 			return fmt.Errorf("usage: vaultline store %s <name>", args[0])
 		}
-		storeRaw := fs.Arg(0)
 		storeName := url.PathEscape(storeRaw)
 		if args[0] == "seal" {
 			payload, err := json.Marshal(api.SealRequest{KeepKeys: *keepKeys})

@@ -7,10 +7,10 @@
 - `--output json|text|raw` — formatting used by commands that print responses
 
 ## Import commands
-- `import bitwarden --all [--prefix bitwarden] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
-- `import bitwarden --item <name-or-id> [--prefix bitwarden] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
+- `import bitwarden --all [--prefix PREFIX] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
+- `import bitwarden --item <name-or-id> [--prefix PREFIX] [--store default] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]`
 - requires the official `bw` CLI plus an unlocked Bitwarden session (`BW_SESSION`)
-- imports login credentials, URIs, TOTP, notes, and custom fields into Vaultline keys such as `project-a:bitwarden.github.password`
+- imports login credentials, URIs, TOTP, notes, and custom fields into Vaultline keys such as `project-a:github.password` or `project-a:bitwarden.github.password` when `--prefix bitwarden` is used
 - Bitwarden prefix, folder names, item names, and custom field names are normalized only lightly: uppercase becomes lowercase, whitespace is removed, `_` becomes `-`, and `/`, `:`, `,`, `!`, `(`, `)` become `.`, and repeated `.` collapse into one. Any other illegal characters remain untouched; affected keys are reported and skipped so the source item, folder, or prefix can be fixed explicitly.
 - imports are additive by default (`--add-missing-keys=true`, `--overwrite-existing-keys=false`); use `--overwrite-existing-keys` to refresh already imported keys
 

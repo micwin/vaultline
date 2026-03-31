@@ -143,7 +143,7 @@ Reads Bitwarden items via the installed bw CLI. Requires an unlocked bw session.
 func importSubcommandHelp(name string) string {
 	switch name {
 	case "bitwarden":
-		return "Usage:\n  vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n  vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n\nImport login and secure-note items from Bitwarden via the bw CLI. Bitwarden item names must already fit Vaultline's key rules after the optional prefix and group are added."
+		return "Usage:\n  vaultline import bitwarden --all [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n  vaultline import bitwarden --item NAME [--prefix PREFIX] [--store STORE] [--dry-run] [--add-missing-keys] [--overwrite-existing-keys]\n\nImport login and secure-note items from Bitwarden via the bw CLI. No prefix is added unless --prefix is specified. Bitwarden item names must already fit Vaultline's key rules after the optional prefix and group are added."
 	default:
 		return importUsageText()
 	}
@@ -528,7 +528,7 @@ func runImportBitwarden(baseURL string, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("import bitwarden", flag.ContinueOnError)
 	all := fs.Bool("all", false, "import all available Bitwarden items")
 	item := fs.String("item", "", "import only items whose name or id matches this value")
-	prefix := fs.String("prefix", "bitwarden", "prefix for generated keys")
+	prefix := fs.String("prefix", "", "optional prefix for generated keys")
 	storeName := fs.String("store", stores.DefaultStoreName, "target vaultline store")
 	dryRun := fs.Bool("dry-run", false, "show what would be imported without storing anything")
 	addMissing := fs.Bool("add-missing-keys", true, "add keys that do not already exist in vaultline")

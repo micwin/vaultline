@@ -394,16 +394,21 @@ func (s *Server) handleCreateStore(w http.ResponseWriter, r *http.Request) {
 	}
 	response := api.StoreCreateResponse{}
 	if req.Initialize {
-		passphrase, err := generatePassphrase()
-		if err != nil {
+		passphrase := req.Passphrase
+		if passphrase == "" {
+			var err error
+			passphrase, err = generatePassphrase()
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "STORE_CREATE_FAILED", err.Error())
+				return
+			}
+			response.Passphrase = passphrase
+		}
+		remember := req.RememberPassphrase || req.Passphrase == ""
+		if err := s.stores.Unseal(req.Name, passphrase, remember); err != nil {
 			writeError(w, http.StatusInternalServerError, "STORE_CREATE_FAILED", err.Error())
 			return
 		}
-		if err := s.stores.Unseal(req.Name, passphrase); err != nil {
-			writeError(w, http.StatusInternalServerError, "STORE_CREATE_FAILED", err.Error())
-			return
-		}
-		response.Passphrase = passphrase
 	}
 	info, _ := s.stores.Info(req.Name)
 	response.Name = info.Name
@@ -466,7 +471,8 @@ func (s *Server) handleUnsealForStore(name string, w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
-	if err := s.stores.Unseal(name, req.Passphrase); err != nil {
+	remember := req.RememberPassphrase || req.Passphrase == ""
+	if err := s.stores.Unseal(name, req.Passphrase, remember); err != nil {
 		handleStoreError(w, name, err)
 		return
 	}

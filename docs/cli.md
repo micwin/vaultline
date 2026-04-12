@@ -76,18 +76,19 @@ Keys must be lowercase and may include umlauts, digits, `@`, `.` or `-` to expre
 - `secret get <store:key> [--out path] [--output raw|json]`
 - `secret delete <store:key>`
 - `secret delete-prefix <store:prefix.> [--dry-run] [--yes]`
-- `secret glob <store-glob:key-glob>`
-- `secret list [store:] [--output json]`
+- `secret glob <store-glob:key-glob> [--raw]`
+- `secret list [store:] [--output json] [--raw]`
   - text output shows `store:key`, update timestamp, and version
+  - `--raw` prints only matching key names, one per line
   - `delete-prefix` only deletes keys below a dotted prefix and requires `--yes` unless used with `--dry-run`
   - `glob` searches qualified keys with shell-style wildcards, e.g. `bitw*:*.zf.*test*`
 
 ## Store commands
 - `store add <name> <path>` — register an existing store
-- `store init <name> [path]` — create, register, and immediately unseal a new store; when omitted, the path defaults next to the default store
-- `store list` — show every configured store plus availability/seal state
+- `store init <name> [path] [--prompt-passphrase] [--remember-passphrase]` — create, register, and immediately unseal a new store; when omitted, the path defaults next to the default store. With `--prompt-passphrase`, the CLI asks twice for a custom store passphrase instead of generating one and only echoes it back in masked form. Prompted passphrases are not stored unless `--remember-passphrase` is also set.
+- `store list [--raw]` — show every configured store plus availability/seal state; `--raw` prints only store names
 - `store show <name>` — dump one store entry as JSON
-- `store unseal <name>` — first tries any remembered passphrase; prompts only if none is stored
+- `store unseal <name> [--prompt-passphrase] [--remember-passphrase|--transient]` — first tries any remembered passphrase; prompts only if none is stored unless `--prompt-passphrase` forces a fresh prompt
 - `store seal <name> [--keep-keys]` — seal the store; remembered passphrases are removed unless `--keep-keys` is specified
 - `store delete|remove|rm <name>` — remove a store from the registry without deleting files on disk
 - every command and subcommand supports `--help`, for example `vaultline store init --help` or `vaultline secret set --help`

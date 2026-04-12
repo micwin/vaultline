@@ -67,7 +67,6 @@ func usageText() string {
 
   vaultline [--addr HOST:PORT] <command> [flags]
       health                     Check daemon status
-      unseal                     Prompt for passphrase and unlock the default store
       seal                       Reseal the default store
       daemon-stop                Ask the daemon to shut down
       completion                 Print shell completion helpers
@@ -92,7 +91,7 @@ func storeUsageText() string {
   vaultline store add <name> <path>
       Register an existing named store.
 
-  vaultline store init <name> [path]
+  vaultline store init <name> [path] [--prompt-passphrase]
       Create a new named store, generate an unseal key, store it in config,
       and leave the store immediately unsealed. When path is omitted, the store
       is created next to the default store under the same parent directory.
@@ -255,13 +254,13 @@ func storeSubcommandHelp(name string) string {
 	case "add":
 		return "Usage:\n  vaultline store add <name> <path>\n\nRegister an existing store path in the local registry."
 	case "init":
-		return "Usage:\n  vaultline store init <name> [path]\n\nCreate a new store at [path], generate an unseal key, remember it in config, and leave the store unsealed. If no path is given, the store is created next to the default store."
+		return "Usage:\n  vaultline store init <name> [path] [--prompt-passphrase] [--remember-passphrase]\n\nCreate a new store at [path], either generate an unseal key or prompt for one, optionally remember it in config, and leave the store unsealed. If no path is given, the store is created next to the default store."
 	case "list":
-		return "Usage:\n  vaultline store list\n\nList all configured stores and their status."
+		return "Usage:\n  vaultline store list [--raw]\n\nList all configured stores and their status. `--raw` prints only the store names."
 	case "show":
 		return "Usage:\n  vaultline store show <name>\n\nShow one configured store as JSON."
 	case "unseal":
-		return "Usage:\n  vaultline store unseal <name>\n\nUnseal one named store. Uses a remembered passphrase first, then prompts if needed."
+		return "Usage:\n  vaultline store unseal <name> [--prompt-passphrase] [--remember-passphrase|--transient]\n\nUnseal one named store. Uses a remembered passphrase first unless --prompt-passphrase is specified."
 	case "seal":
 		return "Usage:\n  vaultline store seal <name> [--keep-keys]\n\nSeal one named store. By default remembered passphrases are removed from config."
 	case "delete", "remove", "rm":
@@ -282,9 +281,9 @@ func secretSubcommandHelp(name string) string {
 	case "delete-prefix":
 		return "Usage:\n  vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]\n\nDelete all secrets whose names start with the given prefix. The prefix must end with a dot."
 	case "glob":
-		return "Usage:\n  vaultline secret glob <store-glob:key-glob>\n\nSearch secrets using shell-style glob patterns. If the store part is omitted, all stores are searched."
+		return "Usage:\n  vaultline secret glob <store-glob:key-glob> [--raw]\n\nSearch secrets using shell-style glob patterns. If the store part is omitted, all stores are searched. `--raw` prints only matching key names."
 	case "list":
-		return "Usage:\n  vaultline secret list [store:]\n\nList secrets from one store (default: default)."
+		return "Usage:\n  vaultline secret list [store:] [--raw]\n\nList secrets from one store (default: default). `--raw` prints only qualified key names."
 	default:
 		return secretUsageText()
 	}
@@ -330,8 +329,6 @@ func Run(args []string, out io.Writer) error {
 		return runComplete(remaining[1:], out)
 	case "health":
 		return runHealth(baseURL, *output, out)
-	case "unseal":
-		return runUnseal(baseURL, remaining[1:], out)
 	case "seal":
 		return runSeal(baseURL, remaining[1:], out)
 	case "daemon-stop":
@@ -376,6 +373,31 @@ func runHealth(baseURL, outputFmt string, out io.Writer) error {
 		fmt.Fprintln(out, string(body))
 		return nil
 	}
+	if outputFmt == "raw" {
+		fmt.Fprintf(out, "daemon_status=%v\n", payload["status"])
+		fmt.Fprintf(out, "default_store=%v\n", payload["default_store"])
+		if storesValue, ok := payload["stores"].([]any); ok {
+			for _, item := range storesValue {
+				if entry, ok := item.(map[string]any); ok {
+					storeStatus := "unsealed"
+					if available, ok := entry["available"].(bool); ok && !available {
+						storeStatus = "unavailable"
+					} else if sealed, ok := entry["sealed"].(bool); ok && sealed {
+						storeStatus = "sealed"
+					}
+					fmt.Fprintf(out, "store:%v:%s\n", entry["name"], storeStatus)
+				}
+			}
+		}
+		if bindsValue, ok := payload["binds"].([]any); ok {
+			for _, item := range bindsValue {
+				if entry, ok := item.(map[string]any); ok {
+					fmt.Fprintf(out, "bind:%v:%v:%v\n", entry["addr"], entry["allow_count"], entry["state"])
+				}
+			}
+		}
+		return nil
+	}
 	printKeyValueTable(
 		[][2]string{{"DAEMON_STATUS", fmt.Sprint(payload["status"])}, {"DEFAULT_STORE", fmt.Sprint(payload["default_store"])}},
 		out,
@@ -415,9 +437,24 @@ func runHealth(baseURL, outputFmt string, out io.Writer) error {
 }
 
 func tryUnseal(endpoint, passphrase string) ([]byte, int, error) {
+	return tryUnsealWithRemember(endpoint, passphrase, true)
+}
+
+func tryUnsealWithRemember(endpoint, passphrase string, remember bool) ([]byte, int, error) {
 	payload, err := json.Marshal(api.UnsealRequest{Passphrase: passphrase})
 	if err != nil {
 		return nil, 0, err
+	}
+	if remember {
+		payload, err = json.Marshal(api.UnsealRequest{Passphrase: passphrase, RememberPassphrase: true})
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		payload, err = json.Marshal(api.UnsealRequest{Passphrase: passphrase, RememberPassphrase: false})
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	resp, err := httpClient.Post(endpoint, "application/json", bytes.NewReader(payload))
 	if err != nil {
@@ -429,12 +466,47 @@ func tryUnseal(endpoint, passphrase string) ([]byte, int, error) {
 }
 
 func runUnseal(baseURL string, args []string, out io.Writer) error {
-	if len(args) > 0 {
-		if len(args) == 1 && isHelpArg(args[0]) {
-			fmt.Fprintln(out, "Usage:\n  vaultline unseal\n\nUnseal the default store. Uses a remembered passphrase first, then prompts if needed.")
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") && args[0] != "help" {
+		if len(args) > 1 && isHelpArg(args[1]) {
+			fmt.Fprintln(out, storeSubcommandHelp("unseal"))
 			return nil
 		}
-		return fmt.Errorf("usage: vaultline unseal")
+		return fmt.Errorf("unseal targets the default store only; use `vaultline store unseal %s`", args[0])
+	}
+	fs := flag.NewFlagSet("unseal", flag.ContinueOnError)
+	promptPassphrase := fs.Bool("prompt-passphrase", false, "force a fresh interactive passphrase prompt")
+	rememberPassphrase := fs.Bool("remember-passphrase", false, "remember the prompted passphrase in stores.json")
+	transient := fs.Bool("transient", false, "do not remember the prompted passphrase")
+	value := fs.String("value", "", "literal passphrase value")
+	filePath := fs.String("file", "", "read passphrase from file")
+	useStdin := fs.Bool("stdin", false, "read passphrase from stdin")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			fmt.Fprintln(out, "Usage:\n  vaultline unseal [--prompt-passphrase] [--remember-passphrase|--transient]\n\nUnseal the default store. Uses a remembered passphrase first unless --prompt-passphrase is specified.")
+			return nil
+		}
+		return err
+	}
+	if *rememberPassphrase && *transient {
+		return fmt.Errorf("choose either --remember-passphrase or --transient")
+	}
+	remember := *rememberPassphrase
+	explicitInput := *value != "" || *filePath != "" || *useStdin || *promptPassphrase
+	if explicitInput {
+		passphrase, err := readPassphraseInput(*value, *filePath, *useStdin, *promptPassphrase)
+		if err != nil {
+			return err
+		}
+		body, status, err := tryUnsealWithRemember(baseURL+"/api/v1/unseal", passphrase, remember)
+		if err != nil {
+			return err
+		}
+		if status != http.StatusOK {
+			return fmt.Errorf("unseal failed: %s", body)
+		}
+		fmt.Fprintln(out, "vaultline unsealed")
+		return nil
 	}
 	body, status, err := tryUnseal(baseURL+"/api/v1/unseal", "")
 	if err != nil {
@@ -451,7 +523,7 @@ func runUnseal(baseURL string, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	body, status, err = tryUnseal(baseURL+"/api/v1/unseal", passphrase)
+	body, status, err = tryUnsealWithRemember(baseURL+"/api/v1/unseal", passphrase, remember)
 	if err != nil {
 		return err
 	}
@@ -1201,7 +1273,7 @@ compdef _vaultline_complete vaultline
 
 func completeWords(words []string, current string) []string {
 	if len(words) == 0 {
-		return filterCompletions([]string{"health", "unseal", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
+		return filterCompletions([]string{"health", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
 	}
 	switch words[0] {
 	case "completion":
@@ -1310,10 +1382,16 @@ func completeStoreWords(words []string, current string) []string {
 		case "delete", "remove", "rm":
 			return filterCompletions(filterOut(storeNames, stores.DefaultStoreName), current)
 		case "add", "init":
-			return nil
+			return filterCompletions([]string{"--prompt-passphrase", "--remember-passphrase"}, current)
 		case "list":
-			return filterCompletions([]string{"--help"}, current)
+			return filterCompletions([]string{"--raw", "--help"}, current)
 		}
+	}
+	if sub == "init" {
+		return filterCompletions([]string{"--prompt-passphrase", "--remember-passphrase", "--help"}, current)
+	}
+	if sub == "unseal" {
+		return filterCompletions(append(storeNames, "--prompt-passphrase", "--remember-passphrase", "--transient", "--help"), current)
 	}
 	if sub == "seal" && len(words) >= 2 {
 		return filterCompletions([]string{"--keep-keys", "--help"}, current)
@@ -1363,7 +1441,7 @@ func completeSecretWords(words []string, current string) []string {
 		case "set", "get", "delete", "delete-prefix", "glob":
 			return filterCompletions(append(storePrefixes, "--name", "--help"), current)
 		case "list":
-			return filterCompletions(append(storePrefixes, "--help"), current)
+			return filterCompletions(append(storePrefixes, "--raw", "--help"), current)
 		}
 	}
 	if sub == "set" {
@@ -1379,10 +1457,10 @@ func completeSecretWords(words []string, current string) []string {
 		return filterCompletions(append(storePrefixes, flagsForDeletePrefix...), current)
 	}
 	if sub == "glob" {
-		return filterCompletions(append(storePrefixes, "--help"), current)
+		return filterCompletions(append(storePrefixes, "--raw", "--help"), current)
 	}
 	if sub == "list" {
-		return filterCompletions(append(storePrefixes, "--help"), current)
+		return filterCompletions(append(storePrefixes, "--raw", "--help"), current)
 	}
 	return nil
 }
@@ -1754,6 +1832,16 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 	}
 	switch args[0] {
 	case "list":
+		fs := flag.NewFlagSet("store list", flag.ContinueOnError)
+		raw := fs.Bool("raw", false, "print only store names")
+		fs.SetOutput(io.Discard)
+		if err := fs.Parse(args[1:]); err != nil {
+			if err == flag.ErrHelp {
+				fmt.Fprintln(out, storeSubcommandHelp(args[0]))
+				return nil
+			}
+			return err
+		}
 		resp, err := httpClient.Get(baseURL + "/api/v1/stores")
 		if err != nil {
 			return err
@@ -1776,6 +1864,12 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
 			return err
+		}
+		if *raw {
+			for _, store := range payload.Stores {
+				fmt.Fprintln(out, store.Name)
+			}
+			return nil
 		}
 		rows := make([][]string, 0, len(payload.Stores))
 		for _, store := range payload.Stores {
@@ -1800,19 +1894,58 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		fmt.Fprintln(out, string(body))
 		return nil
 	case "add", "init":
-		if args[0] == "add" && len(args) != 3 {
+		storeArgs := make([]string, 0, 2)
+		flagArgs := make([]string, 0, len(args))
+		for _, arg := range args[1:] {
+			if strings.HasPrefix(arg, "-") {
+				flagArgs = append(flagArgs, arg)
+				continue
+			}
+			if len(storeArgs) < 2 {
+				storeArgs = append(storeArgs, arg)
+				continue
+			}
+			flagArgs = append(flagArgs, arg)
+		}
+		if args[0] == "add" && len(storeArgs) != 2 {
 			return fmt.Errorf("usage: vaultline store add <name> <path>")
 		}
-		if args[0] == "init" && (len(args) < 2 || len(args) > 3) {
-			return fmt.Errorf("usage: vaultline store init <name> [path]")
+		fs := flag.NewFlagSet("store init", flag.ContinueOnError)
+		promptPassphrase := fs.Bool("prompt-passphrase", false, "prompt twice for the store passphrase instead of generating one")
+		rememberPassphrase := fs.Bool("remember-passphrase", false, "store the prompted passphrase in stores.json")
+		fs.SetOutput(io.Discard)
+		if args[0] == "init" {
+			if err := fs.Parse(flagArgs); err != nil {
+				if err == flag.ErrHelp {
+					fmt.Fprintln(out, storeSubcommandHelp(args[0]))
+					return nil
+				}
+				return err
+			}
+			if len(storeArgs) < 1 || len(storeArgs) > 2 || fs.NArg() != 0 {
+				return fmt.Errorf("usage: vaultline store init <name> [path] [--prompt-passphrase] [--remember-passphrase]")
+			}
 		}
+		nameArg := storeArgs[0]
 		path := ""
-		if len(args) == 3 {
-			path = args[2]
+		if args[0] == "add" {
+			path = storeArgs[1]
 		} else if args[0] == "init" {
-			path = defaultNamedStorePath(args[1])
+			if len(storeArgs) == 2 {
+				path = storeArgs[1]
+			} else {
+				path = defaultNamedStorePath(nameArg)
+			}
 		}
-		payload, err := json.Marshal(api.StoreCreateRequest{Name: args[1], Path: path, Initialize: args[0] == "init"})
+		passphrase := ""
+		if args[0] == "init" && *promptPassphrase {
+			var err error
+			passphrase, err = readPassphraseTwice()
+			if err != nil {
+				return err
+			}
+		}
+		payload, err := json.Marshal(api.StoreCreateRequest{Name: nameArg, Path: path, Initialize: args[0] == "init", Passphrase: passphrase, RememberPassphrase: !*promptPassphrase || *rememberPassphrase})
 		if err != nil {
 			return err
 		}
@@ -1829,9 +1962,13 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		if err := json.Unmarshal(body, &created); err != nil {
 			return fmt.Errorf("unexpected store %s response: %s", args[0], body)
 		}
-		fmt.Fprintf(out, "store %s ready\n", args[1])
+		fmt.Fprintf(out, "store %s ready\n", nameArg)
 		if args[0] == "init" {
-			fmt.Fprintf(out, "unseal key: %s\n", created.Passphrase)
+			if created.Passphrase != "" {
+				fmt.Fprintf(out, "unseal key: %s\n", created.Passphrase)
+			} else if passphrase != "" {
+				fmt.Fprintf(out, "unseal key: %s\n", maskSecret(passphrase))
+			}
 			fmt.Fprintln(out, "stored in config and immediately unsealed")
 		}
 		return nil
@@ -1858,6 +1995,12 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		storeArg, flagArgs := splitKeyArg(args[1:], map[string]bool{})
 		fs := flag.NewFlagSet("store "+args[0], flag.ContinueOnError)
 		keepKeys := fs.Bool("keep-keys", false, "keep remembered passphrases in store config")
+		promptPassphrase := fs.Bool("prompt-passphrase", false, "force a fresh interactive passphrase prompt")
+		rememberPassphrase := fs.Bool("remember-passphrase", false, "remember the prompted passphrase in stores.json")
+		transient := fs.Bool("transient", false, "do not remember the prompted passphrase")
+		value := fs.String("value", "", "literal passphrase value")
+		filePath := fs.String("file", "", "read passphrase from file")
+		useStdin := fs.Bool("stdin", false, "read passphrase from stdin")
 		fs.SetOutput(io.Discard)
 		if err := fs.Parse(flagArgs); err != nil {
 			if err == flag.ErrHelp {
@@ -1896,7 +2039,27 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 			fmt.Fprintf(out, "store %s sealed\n", storeRaw)
 			return nil
 		}
+		if *rememberPassphrase && *transient {
+			return fmt.Errorf("choose either --remember-passphrase or --transient")
+		}
+		remember := *rememberPassphrase
 		endpoint := baseURL + "/api/v1/stores/" + storeName + "/unseal"
+		explicitInput := *value != "" || *filePath != "" || *useStdin || *promptPassphrase
+		if explicitInput {
+			passphrase, err := readPassphraseInput(*value, *filePath, *useStdin, *promptPassphrase)
+			if err != nil {
+				return err
+			}
+			body, status, err := tryUnsealWithRemember(endpoint, passphrase, remember)
+			if err != nil {
+				return err
+			}
+			if status != http.StatusOK {
+				return fmt.Errorf("store unseal failed: %s", body)
+			}
+			fmt.Fprintf(out, "store %s unsealed\n", storeRaw)
+			return nil
+		}
 		body, status, err := tryUnseal(endpoint, "")
 		if err != nil {
 			return err
@@ -1912,7 +2075,7 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		body, status, err = tryUnseal(endpoint, passphrase)
+		body, status, err = tryUnsealWithRemember(endpoint, passphrase, remember)
 		if err != nil {
 			return err
 		}
@@ -2214,10 +2377,16 @@ func secretDeletePrefix(baseURL string, args []string, out io.Writer) error {
 }
 
 func secretGlob(baseURL string, args []string, outputFmt string, out io.Writer) error {
-	if len(args) != 1 {
+	fs := flag.NewFlagSet("secret glob", flag.ContinueOnError)
+	raw := fs.Bool("raw", false, "print only matching qualified key names")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: vaultline secret glob <store-glob:key-glob>")
 	}
-	storePattern, keyPattern := parseGlobPattern(args[0])
+	storePattern, keyPattern := parseGlobPattern(fs.Arg(0))
 	storeNames := listConfiguredStoresFn(true)
 	entries := make([]listEntry, 0)
 	for _, storeName := range storeNames {
@@ -2260,6 +2429,12 @@ func secretGlob(baseURL string, args []string, outputFmt string, out io.Writer) 
 		fmt.Fprintln(out, string(data))
 		return nil
 	}
+	if *raw {
+		for _, entry := range entries {
+			fmt.Fprintln(out, entry.Name)
+		}
+		return nil
+	}
 	printSecretTable(entries, out)
 	return nil
 }
@@ -2277,10 +2452,16 @@ func parseGlobPattern(input string) (string, string) {
 }
 
 func secretList(baseURL string, args []string, outputFmt string, out io.Writer) error {
+	fs := flag.NewFlagSet("secret list", flag.ContinueOnError)
+	raw := fs.Bool("raw", false, "print only qualified key names")
+	fs.SetOutput(io.Discard)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	storeName := stores.DefaultStoreName
-	if len(args) > 0 {
+	if fs.NArg() > 0 {
 		var err error
-		storeName, err = parseStoreSelector(args[0])
+		storeName, err = parseStoreSelector(fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -2309,6 +2490,12 @@ func secretList(baseURL string, args []string, outputFmt string, out io.Writer) 
 	}
 	for index := range payload.Keys {
 		payload.Keys[index].Name = storeName + ":" + payload.Keys[index].Name
+	}
+	if *raw {
+		for _, entry := range payload.Keys {
+			fmt.Fprintln(out, entry.Name)
+		}
+		return nil
 	}
 	printSecretTable(payload.Keys, out)
 	return nil
@@ -2375,11 +2562,52 @@ func readSecretInput(literal, filePath string, stdin, twice bool) ([]byte, error
 	}
 }
 
+func readPassphraseInput(literal, filePath string, stdin, prompt bool) (string, error) {
+	switch {
+	case prompt:
+		return readPassphrase()
+	case stdin:
+		if term.IsTerminal(int(syscall.Stdin)) {
+			return readPassphrasePrompt("Enter passphrase: ")
+		}
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	case filePath != "":
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	default:
+		return strings.TrimSpace(literal), nil
+	}
+}
+
 func confirmSecretMatch(first, second []byte) ([]byte, error) {
 	if string(first) != string(second) {
 		return nil, fmt.Errorf("secret values do not match")
 	}
 	return first, nil
+}
+
+func maskSecret(value string) string {
+	if value == "" {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= 2 {
+		return value
+	}
+	masked := make([]rune, len(runes))
+	masked[0] = runes[0]
+	masked[len(runes)-1] = runes[len(runes)-1]
+	for i := 1; i < len(runes)-1; i++ {
+		masked[i] = '*'
+	}
+	return string(masked)
 }
 
 func promptSecretValue() ([]byte, error) {
@@ -2583,6 +2811,34 @@ func readPassphrase() (string, error) {
 		return pass, nil
 	}
 	fmt.Print("Enter passphrase: ")
+	bytesPass, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bytesPass)), nil
+}
+
+func readPassphraseTwice() (string, error) {
+	if !term.IsTerminal(int(syscall.Stdin)) {
+		return "", fmt.Errorf("--prompt-passphrase requires an interactive terminal")
+	}
+	first, err := readPassphrasePrompt("Enter passphrase: ")
+	if err != nil {
+		return "", err
+	}
+	second, err := readPassphrasePrompt("Repeat passphrase: ")
+	if err != nil {
+		return "", err
+	}
+	if first != second {
+		return "", fmt.Errorf("passphrases do not match")
+	}
+	return first, nil
+}
+
+func readPassphrasePrompt(prompt string) (string, error) {
+	fmt.Print(prompt)
 	bytesPass, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Println()
 	if err != nil {

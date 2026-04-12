@@ -103,7 +103,7 @@ func TestManagerUnsealStoresPassphraseAndSealDropsItByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	if err := manager.Unseal(DefaultStoreName, "topsecret"); err != nil {
+	if err := manager.Unseal(DefaultStoreName, "topsecret", true); err != nil {
 		t.Fatalf("unseal local: %v", err)
 	}
 	info, err := manager.Info(DefaultStoreName)
@@ -133,7 +133,7 @@ func TestManagerSealKeepsPassphraseWhenRequested(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}
-	if err := manager.Unseal(DefaultStoreName, "keepme"); err != nil {
+	if err := manager.Unseal(DefaultStoreName, "keepme", true); err != nil {
 		t.Fatalf("unseal local: %v", err)
 	}
 	if err := manager.Seal(DefaultStoreName, true); err != nil {
@@ -146,7 +146,7 @@ func TestManagerSealKeepsPassphraseWhenRequested(t *testing.T) {
 	if !info.HasKey {
 		t.Fatalf("expected passphrase to remain when keep-keys is true")
 	}
-	if err := manager.Unseal(DefaultStoreName, ""); err != nil {
+	if err := manager.Unseal(DefaultStoreName, "", true); err != nil {
 		t.Fatalf("unseal local using remembered passphrase: %v", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestManagerInitStyleUnsealLeavesStoreUnsealedAndRemembered(t *testing.T) {
 	if err := manager.Add("project-a", storePath, true); err != nil {
 		t.Fatalf("init store: %v", err)
 	}
-	if err := manager.Unseal("project-a", "generated-pass"); err != nil {
+	if err := manager.Unseal("project-a", "generated-pass", true); err != nil {
 		t.Fatalf("unseal init store: %v", err)
 	}
 	info, err := manager.Info("project-a")
@@ -175,6 +175,26 @@ func TestManagerInitStyleUnsealLeavesStoreUnsealedAndRemembered(t *testing.T) {
 	}
 	if !info.HasKey {
 		t.Fatalf("expected initialized store to remember its passphrase")
+	}
+}
+
+func TestManagerTransientUnsealDoesNotPersistPassphrase(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "stores.json")
+	localPath := filepath.Join(tmp, "local")
+	manager, err := NewManager(cfgPath, localPath)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	if err := manager.Unseal(DefaultStoreName, "temporary", false); err != nil {
+		t.Fatalf("transient unseal: %v", err)
+	}
+	info, err := manager.Info(DefaultStoreName)
+	if err != nil {
+		t.Fatalf("default info: %v", err)
+	}
+	if info.HasKey {
+		t.Fatalf("expected transient unseal to avoid persisting the passphrase")
 	}
 }
 

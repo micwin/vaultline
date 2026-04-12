@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -123,5 +124,29 @@ func TestStoreSecretErrorsMentionStoreName(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "project-a") {
 		t.Fatalf("expected store name in error, got %s", rr.Body.String())
+	}
+}
+
+func TestCreateStoreWithProvidedPassphraseDoesNotEchoGeneratedKey(t *testing.T) {
+	tmp := t.TempDir()
+	manager, err := stores.NewManager(filepath.Join(tmp, "stores.json"), filepath.Join(tmp, "default"))
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	srv := New(manager, stubNetwork{}, "test")
+	body := bytes.NewBufferString(`{"name":"manual","path":"` + filepath.Join(tmp, "manual") + `","initialize":true,"passphrase":"secret-pass"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/stores", body)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("unexpected status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, ok := payload["passphrase"]; ok {
+		t.Fatalf("manual passphrase should not be echoed back: %v", payload)
 	}
 }

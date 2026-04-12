@@ -53,6 +53,9 @@ func TestStoreInitHelpShowsSubcommandUsage(t *testing.T) {
 	if !strings.Contains(out.String(), "vaultline store init <name> [path]") {
 		t.Fatalf("unexpected help output: %s", out.String())
 	}
+	if !strings.Contains(out.String(), "--prompt-passphrase") {
+		t.Fatalf("expected prompt-passphrase in help output: %s", out.String())
+	}
 }
 
 func TestSecretSetHelpShowsSubcommandUsage(t *testing.T) {
@@ -95,6 +98,18 @@ func TestConfirmSecretMatch(t *testing.T) {
 func TestConfirmSecretMatchMismatch(t *testing.T) {
 	if _, err := confirmSecretMatch([]byte("one"), []byte("two")); err == nil {
 		t.Fatalf("mismatched secrets should fail")
+	}
+}
+
+func TestMaskSecret(t *testing.T) {
+	if got := maskSecret("supersecret"); got != "s*********t" {
+		t.Fatalf("unexpected masked secret: %q", got)
+	}
+	if got := maskSecret("ab"); got != "ab" {
+		t.Fatalf("two-character secret should stay same length: %q", got)
+	}
+	if got := maskSecret("x"); got != "x" {
+		t.Fatalf("single-character secret should stay same length: %q", got)
 	}
 }
 

@@ -2,7 +2,8 @@ package api
 
 // UnsealRequest carries the passphrase needed to unlock the daemon.
 type UnsealRequest struct {
-	Passphrase string `json:"passphrase"`
+	Passphrase         string `json:"passphrase"`
+	RememberPassphrase bool   `json:"remember_passphrase"`
 }
 
 // UnsealResponse mirrors sealed state after an unseal attempt.
@@ -32,9 +33,11 @@ type VersionResponse struct {
 }
 
 type StoreCreateRequest struct {
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	Initialize bool   `json:"initialize"`
+	Name               string `json:"name"`
+	Path               string `json:"path"`
+	Initialize         bool   `json:"initialize"`
+	Passphrase         string `json:"passphrase,omitempty"`
+	RememberPassphrase bool   `json:"remember_passphrase"`
 }
 
 type StoreCreateResponse struct {

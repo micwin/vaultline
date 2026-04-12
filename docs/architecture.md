@@ -45,7 +45,7 @@ Named-store routes:
 
 ## Remembered passphrases
 - `store init` generates a random passphrase, stores it in the registry config, and leaves the new store unsealed.
-- `store unseal <name>` and `vaultline unseal` first try the remembered passphrase before prompting.
+- `store unseal <name>` first tries the remembered passphrase before prompting.
 - `seal` removes remembered passphrases unless `--keep-keys` is requested.
 
 ## Dashboard and health

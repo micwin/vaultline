@@ -253,7 +253,7 @@ func (m *Manager) Seal(name string, keepKeys bool) error {
 	return nil
 }
 
-func (m *Manager) Unseal(name, passphrase string) error {
+func (m *Manager) Unseal(name, passphrase string, remember bool) error {
 	if name == "" {
 		name = DefaultStoreName
 	}
@@ -274,7 +274,11 @@ func (m *Manager) Unseal(name, passphrase string) error {
 	if err := store.Unseal(passphrase); err != nil {
 		return err
 	}
-	entry.Passphrase = passphrase
+	if remember {
+		entry.Passphrase = passphrase
+	} else {
+		entry.Passphrase = ""
+	}
 	m.cfg.Stores[name] = entry
 	return SaveConfig(m.configPath, m.cfg)
 }

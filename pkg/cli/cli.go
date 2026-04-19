@@ -103,8 +103,9 @@ func storeUsageText() string {
   vaultline store show <name>
       Show one store as JSON.
 
-  vaultline store unseal <name>
+  vaultline store unseal <name> [--prompt-passphrase] [--remember-passphrase|--transient] [--from-secret store:key]
       Unseal a named store. Uses a remembered passphrase first, then prompts.
+      --from-secret reads the unseal passphrase from another secret.
 
   vaultline store seal <name> [--keep-keys]
       Seal a named store. By default remembered passphrases are removed.
@@ -263,7 +264,7 @@ func storeSubcommandHelp(name string) string {
 	case "show":
 		return "Usage:\n  vaultline store show <name>\n\nShow one configured store as JSON."
 	case "unseal":
-		return "Usage:\n  vaultline store unseal <name> [--prompt-passphrase] [--remember-passphrase|--transient]\n\nUnseal one named store. Uses a remembered passphrase first unless --prompt-passphrase is specified."
+		return "Usage:\n  vaultline store unseal <name> [--prompt-passphrase] [--remember-passphrase|--transient] [--from-secret store:key]\n\nUnseal one named store. Uses a remembered passphrase first unless --prompt-passphrase is specified. --from-secret reads the passphrase from another secret."
 	case "seal":
 		return "Usage:\n  vaultline store seal <name> [--keep-keys]\n\nSeal one named store. By default remembered passphrases are removed from config."
 	case "delete", "remove", "rm":
@@ -1447,7 +1448,7 @@ func completeStoreWords(words []string, current string) []string {
 		return filterCompletions([]string{"--prompt-passphrase", "--remember-passphrase", "--help"}, current)
 	}
 	if sub == "unseal" {
-		return filterCompletions(append(storeNames, "--prompt-passphrase", "--remember-passphrase", "--transient", "--help"), current)
+		return filterCompletions(append(storeNames, "--prompt-passphrase", "--remember-passphrase", "--transient", "--from-secret", "--help"), current)
 	}
 	if sub == "seal" && len(words) >= 2 {
 		return filterCompletions([]string{"--keep-keys", "--help"}, current)
@@ -2060,6 +2061,7 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		promptPassphrase := fs.Bool("prompt-passphrase", false, "force a fresh interactive passphrase prompt")
 		rememberPassphrase := fs.Bool("remember-passphrase", false, "remember the prompted passphrase in stores.json")
 		transient := fs.Bool("transient", false, "do not remember the prompted passphrase")
+		fromSecret := fs.String("from-secret", "", "read passphrase from another secret (store:key)")
 		value := fs.String("value", "", "literal passphrase value")
 		filePath := fs.String("file", "", "read passphrase from file")
 		useStdin := fs.Bool("stdin", false, "read passphrase from stdin")
@@ -2104,14 +2106,28 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 		if *rememberPassphrase && *transient {
 			return fmt.Errorf("choose either --remember-passphrase or --transient")
 		}
+		if *fromSecret != "" && (*value != "" || *filePath != "" || *useStdin || *promptPassphrase) {
+			return fmt.Errorf("--from-secret cannot be combined with --value/--file/--stdin/--prompt-passphrase")
+		}
 		remember := *rememberPassphrase
 		endpoint := baseURL + "/api/v1/stores/" + storeName + "/unseal"
-		explicitInput := *value != "" || *filePath != "" || *useStdin || *promptPassphrase
+		explicitInput := *fromSecret != "" || *value != "" || *filePath != "" || *useStdin || *promptPassphrase
 		if explicitInput {
-			passphrase, err := readPassphraseInput(*value, *filePath, *useStdin, *promptPassphrase)
-			if err != nil {
-				return err
+			passphrase := ""
+			if *fromSecret != "" {
+				secretValue, err := readSecretValue(baseURL, *fromSecret)
+				if err != nil {
+					return fmt.Errorf("read --from-secret failed: %w", err)
+				}
+				passphrase = string(secretValue)
+			} else {
+				var err error
+				passphrase, err = readPassphraseInput(*value, *filePath, *useStdin, *promptPassphrase)
+				if err != nil {
+					return err
+				}
 			}
+
 			body, status, err := tryUnsealWithRemember(endpoint, passphrase, remember)
 			if err != nil {
 				return err

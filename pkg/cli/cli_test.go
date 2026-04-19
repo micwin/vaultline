@@ -142,6 +142,17 @@ func TestCompleteStoreCommandsSuggestConfiguredStores(t *testing.T) {
 	if len(secretSuggestions) != 1 || secretSuggestions[0] != "project-a:" {
 		t.Fatalf("unexpected secret suggestions: %#v", secretSuggestions)
 	}
+	unsealFlagSuggestions := completeWords([]string{"store", "unseal", "project-a"}, "--from")
+	foundFromSecret := false
+	for _, item := range unsealFlagSuggestions {
+		if item == "--from-secret" {
+			foundFromSecret = true
+			break
+		}
+	}
+	if !foundFromSecret {
+		t.Fatalf("expected --from-secret in unseal completions: %#v", unsealFlagSuggestions)
+	}
 }
 
 func TestCompleteDaemonCommandsSuggestBindsAndAllows(t *testing.T) {
@@ -399,6 +410,42 @@ func TestStoreSealAcceptsKeepKeysAfterStoreName(t *testing.T) {
 	var out bytes.Buffer
 	if err := runStore(server.URL, []string{"seal", "project-a", "--keep-keys"}, &out); err != nil {
 		t.Fatalf("run store seal: %v", err)
+	}
+}
+
+func TestStoreUnsealFromSecret(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stores/superstore/secrets/ai.unseal":
+			_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("from-secret-pass")), Version: "v1"})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/stores/ai/unseal":
+			var payload api.UnsealRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode unseal request: %v", err)
+			}
+			if payload.Passphrase != "from-secret-pass" {
+				t.Fatalf("unexpected unseal passphrase %q", payload.Passphrase)
+			}
+			if !payload.RememberPassphrase {
+				t.Fatalf("expected remember_passphrase=true")
+			}
+			_, _ = w.Write([]byte(`{"sealed":false,"store":"ai"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	var out bytes.Buffer
+	if err := runStore(server.URL, []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--remember-passphrase"}, &out); err != nil {
+		t.Fatalf("run store unseal from-secret: %v", err)
+	}
+}
+
+func TestStoreUnsealFromSecretRejectsPromptCombination(t *testing.T) {
+	var out bytes.Buffer
+	err := runStore("http://127.0.0.1:8428", []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--prompt-passphrase"}, &out)
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("expected conflict error, got %v", err)
 	}
 }
 

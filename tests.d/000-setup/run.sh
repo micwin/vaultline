@@ -1,53 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TEST_ROOT="${SMOKEY_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-if [[ "$(basename "${TEST_ROOT}")" != "tests.d" ]]; then
-  TEST_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
-fi
-PROJECT_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
-STATE_DIR="${PROJECT_ROOT}/.testrun"
-STORE_DIR="${STATE_DIR}/store"
-PROJECT_STORE_DIR="${STATE_DIR}/stores/project-a"
-STORE_CONFIG_DIR="${STATE_DIR}/config"
-STORE_CONFIG_FILE="${STORE_CONFIG_DIR}/stores.json"
-STORE_DATA_DIR="${STATE_DIR}/data"
-LOG_FILE="${STATE_DIR}/vaultlined.log"
-PID_FILE="${STATE_DIR}/vaultlined.pid"
-ENV_FILE="${STATE_DIR}/env"
-BIN_DIR="${STATE_DIR}/bin"
-CLI_BIN="${BIN_DIR}/vaultline"
-ADDR="127.0.0.1:19428"
-PASS="vaultline-smoke-pass"
+export VAULTLINE_TEST_STORE="${SMOKEY_STATE_DIR}/store"
+export VAULTLINE_TEST_PROJECT_STORE="${SMOKEY_STATE_DIR}/stores/project-a"
+STORE_CONFIG_DIR="${SMOKEY_STATE_DIR}/config"
+export VAULTLINE_TEST_STORE_CONFIG="${STORE_CONFIG_DIR}/stores.json"
+export VAULTLINE_TEST_STORE_DATA="${SMOKEY_STATE_DIR}/data"
+export VAULTLINE_TEST_LOG="${SMOKEY_STATE_DIR}/vaultlined.log"
+PID_FILE="${SMOKEY_STATE_DIR}/vaultlined.pid"
+export VAULTLINE_TEST_ADDR="127.0.0.1:19428"
+export VAULTLINE_TEST_PASS="vaultline-smoke-pass"
+export VAULTLINE_TEST_PID=""
 
-echo "[000-setup] preparing workspace under ${STATE_DIR}"
-if [[ -f "${STATE_DIR}/vaultlined.pid" ]]; then
-  OLD_PID="$(cat "${STATE_DIR}/vaultlined.pid")"
-  if [[ -n "${OLD_PID}" ]] && kill -0 "${OLD_PID}" >/dev/null 2>&1; then
-    echo "[000-setup] stopping stale daemon (${OLD_PID})"
-    kill "${OLD_PID}" >/dev/null 2>&1 || true
-    sleep 1
-  fi
-fi
-rm -rf "${STATE_DIR}"
-mkdir -p "${STORE_DIR}" "${BIN_DIR}"
+echo "[000-setup] preparing workspace under ${SMOKEY_STATE_DIR}"
+mkdir -p "${VAULTLINE_TEST_STORE}"
 
-echo "[000-setup] building vaultline binary"
+echo "[000-setup] checking go toolchain"
 GO_BIN=$(command -v go)
 if [[ -z "${GO_BIN}" ]]; then
   echo "[000-setup] go toolchain not found" >&2
   exit 1
 fi
-GOOS="" GOARCH="" go build -o "${CLI_BIN}" ./cmd/vaultline
 
-VAULTLINE_PASSPHRASE="${PASS}" XDG_CONFIG_HOME="${STORE_CONFIG_DIR}" XDG_DATA_HOME="${STORE_DATA_DIR}" "${CLI_BIN}" daemon --addr "${ADDR}" --store-dir "${STORE_DIR}" --config-file "${STORE_CONFIG_FILE}" >"${LOG_FILE}" 2>&1 &
-PID=$!
-echo "${PID}" > "${PID_FILE}"
+VAULTLINE_PASSPHRASE="${VAULTLINE_TEST_PASS}" XDG_CONFIG_HOME="${STORE_CONFIG_DIR}" XDG_DATA_HOME="${VAULTLINE_TEST_STORE_DATA}" go run ./cmd/vaultline daemon --addr "${VAULTLINE_TEST_ADDR}" --store-dir "${VAULTLINE_TEST_STORE}" --config-file "${VAULTLINE_TEST_STORE_CONFIG}" >"${VAULTLINE_TEST_LOG}" 2>&1 &
+VAULTLINE_TEST_PID=$!
+echo "${VAULTLINE_TEST_PID}" > "${PID_FILE}"
 
-echo "[000-setup] waiting for daemon (${PID})"
+echo "[000-setup] waiting for daemon (${VAULTLINE_TEST_PID})"
 READY=0
 for _ in $(seq 1 10); do
-  if "${CLI_BIN}" --addr "${ADDR}" health >/dev/null 2>&1; then
+  if go run ./cmd/vaultline --addr "${VAULTLINE_TEST_ADDR}" health >/dev/null 2>&1; then
     READY=1
     break
   fi
@@ -56,21 +38,21 @@ done
 
 if [[ "${READY}" -ne 1 ]]; then
   echo "[000-setup] daemon failed to start" >&2
-  kill "${PID}" >/dev/null 2>&1 || true
-  wait "${PID}" >/dev/null 2>&1 || true
+  kill "${VAULTLINE_TEST_PID}" >/dev/null 2>&1 || true
+  wait "${VAULTLINE_TEST_PID}" >/dev/null 2>&1 || true
   exit "${SMOKEY_SKIP_CODE:-20}"
 fi
 
-cat > "${ENV_FILE}" <<EOF
-VAULTLINE_TEST_ADDR=${ADDR}
-VAULTLINE_TEST_PASS=${PASS}
-VAULTLINE_TEST_STORE=${STORE_DIR}
-VAULTLINE_TEST_PROJECT_STORE=${PROJECT_STORE_DIR}
-VAULTLINE_TEST_STORE_CONFIG=${STORE_CONFIG_FILE}
-VAULTLINE_TEST_STORE_DATA=${STORE_DATA_DIR}
-VAULTLINE_TEST_PID=${PID}
-VAULTLINE_TEST_LOG=${LOG_FILE}
-VAULTLINE_TEST_BIN=${CLI_BIN}
-EOF
+for name in \
+  VAULTLINE_TEST_ADDR \
+  VAULTLINE_TEST_PASS \
+  VAULTLINE_TEST_STORE \
+  VAULTLINE_TEST_PROJECT_STORE \
+  VAULTLINE_TEST_STORE_CONFIG \
+  VAULTLINE_TEST_STORE_DATA \
+  VAULTLINE_TEST_PID \
+  VAULTLINE_TEST_LOG; do
+  smokey_env_save "${name}"
+done
 
-echo "[000-setup] vaultlined ready on ${ADDR}"
+echo "[000-setup] vaultlined ready on ${VAULTLINE_TEST_ADDR}"

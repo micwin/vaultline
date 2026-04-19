@@ -1,54 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TEST_ROOT="${SMOKEY_TEST_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)}"
-if [[ "$(basename "${TEST_ROOT}")" != "tests.d" ]]; then
-  TEST_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
-fi
-PROJECT_ROOT="$(cd "${TEST_ROOT}/.." && pwd)"
-STATE_DIR="${PROJECT_ROOT}/.testrun"
-ENV_FILE="${STATE_DIR}/env"
+source "${SMOKEY_TEST_ROOT}/vaultline-testlib.sh"
+vaultline_require_setup
 
-if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "[050-secrets-list] missing env file" >&2
-  exit 1
-fi
+key_name="list.fire-test"
+value="embers-${RANDOM}"
+project_key_name="list.project-test"
+project_value="project-${RANDOM}"
 
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-ADDR="${VAULTLINE_TEST_ADDR:-127.0.0.1:19428}"
-PROJECT_STORE_DIR="${VAULTLINE_TEST_PROJECT_STORE:-${STATE_DIR}/stores/project-a}"
-STORE_CONFIG_FILE="${VAULTLINE_TEST_STORE_CONFIG:-${STATE_DIR}/config/stores.json}"
-if [[ -n "${VAULTLINE_TEST_BIN:-}" ]]; then
-  VAULTLINE_CLI=("${VAULTLINE_TEST_BIN}")
-else
-  VAULTLINE_CLI=(go run ./cmd/vaultline)
-fi
+echo "${value}" | vaultline_run secret set "default:${key_name}" --stdin >/dev/null
+vaultline_run_store store init project-a "${VAULTLINE_TEST_PROJECT_STORE}" >/dev/null 2>&1 || true
+vaultline_run_store store unseal project-a >/dev/null 2>&1 || true
+echo "${project_value}" | vaultline_run secret set "project-a:${project_key_name}" --stdin >/dev/null
 
-KEY_NAME="list.fire-test"
-VALUE="embers-${RANDOM}"
-PROJECT_KEY_NAME="list.project-test"
-PROJECT_VALUE="project-${RANDOM}"
+output_local="$(vaultline_run secret list default:)"
+grep -q "default:${key_name}" <<<"${output_local}" || { echo "[050-secrets-list] default:${key_name} missing in output" >&2; exit 1; }
+grep -q "project-a:${project_key_name}" <<<"${output_local}" && { echo "[050-secrets-list] project key leaked into local list" >&2; exit 1; }
 
-echo "${VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set "default:${KEY_NAME}" --stdin >/dev/null
-XDG_CONFIG_HOME="$(dirname "${STORE_CONFIG_FILE}")" "${VAULTLINE_CLI[@]}" --addr "${ADDR}" store init project-a "${PROJECT_STORE_DIR}" >/dev/null 2>&1 || true
-XDG_CONFIG_HOME="$(dirname "${STORE_CONFIG_FILE}")" "${VAULTLINE_CLI[@]}" --addr "${ADDR}" store unseal project-a >/dev/null 2>&1 || true
-echo "${PROJECT_VALUE}" | "${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret set "project-a:${PROJECT_KEY_NAME}" --stdin >/dev/null
-
-OUTPUT_LOCAL="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list default:)"
-if ! grep -q "default:${KEY_NAME}" <<<"${OUTPUT_LOCAL}"; then
-	 echo "[050-secrets-list] default:${KEY_NAME} missing in output" >&2
-  exit 1
-fi
-if grep -q "project-a:${PROJECT_KEY_NAME}" <<<"${OUTPUT_LOCAL}"; then
-  echo "[050-secrets-list] project key leaked into local list" >&2
-  exit 1
-fi
-
-OUTPUT_PROJECT="$("${VAULTLINE_CLI[@]}" --addr "${ADDR}" secret list project-a:)"
-if ! grep -q "project-a:${PROJECT_KEY_NAME}" <<<"${OUTPUT_PROJECT}"; then
-  echo "[050-secrets-list] project-a:${PROJECT_KEY_NAME} missing in output" >&2
-  exit 1
-fi
+output_project="$(vaultline_run secret list project-a:)"
+grep -q "project-a:${project_key_name}" <<<"${output_project}" || { echo "[050-secrets-list] project-a:${project_key_name} missing in output" >&2; exit 1; }
 
 echo "[050-secrets-list] ok"

@@ -77,7 +77,8 @@ func usageText() string {
       daemon                     Manage extra daemon binds and allow rules
       store add|init|list|show|unseal|seal|delete
                                  Manage named stores
-      secret set|get|delete|list Manage secrets (keys use lowercase letters plus . and -)
+      secret set|get|delete|copy|move|list
+                                 Manage secrets (keys use lowercase letters plus . and -)
 
 Examples:
   vaultline daemon --store-dir ./store
@@ -238,6 +239,8 @@ func secretUsageText() string {
   vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]
   vaultline secret get <store:key> [--out PATH] [--output raw|json]
   vaultline secret delete <store:key>
+  vaultline secret copy [oldstore:]oldname [newstore:]newname [--force]
+  vaultline secret move [oldstore:]oldname [newstore:]newname [--force]
   vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]
   vaultline secret glob <store-glob:key-glob>
   vaultline secret list [store:]
@@ -278,6 +281,10 @@ func secretSubcommandHelp(name string) string {
 		return "Usage:\n  vaultline secret get <store:key> [--out PATH] [--output raw|json]\n\nFetch a secret from the selected store."
 	case "delete":
 		return "Usage:\n  vaultline secret delete <store:key>\n\nDelete a secret from the selected store."
+	case "copy":
+		return "Usage:\n  vaultline secret copy [oldstore:]oldname [newstore:]newname [--force]\n\nCopy one secret to another key (possibly in another store). Fails when destination exists unless --force is set."
+	case "move":
+		return "Usage:\n  vaultline secret move [oldstore:]oldname [newstore:]newname [--force]\n\nMove one secret to another key (possibly in another store). Fails when destination exists unless --force is set."
 	case "delete-prefix":
 		return "Usage:\n  vaultline secret delete-prefix <store:prefix.> [--dry-run] [--yes]\n\nDelete all secrets whose names start with the given prefix. The prefix must end with a dot."
 	case "glob":
@@ -1077,6 +1084,55 @@ func secretExists(baseURL, qualifiedKey string) (bool, error) {
 	return false, fmt.Errorf("lookup failed: %s", body)
 }
 
+func readSecretValue(baseURL, qualifiedKey string) ([]byte, error) {
+	storeName, key, err := parseQualifiedKey(qualifiedKey)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Get(secretEndpoint(baseURL, storeName, key))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get secret failed: %s", body)
+	}
+	var payload api.SecretResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	value, err := base64.StdEncoding.DecodeString(payload.Value)
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func deleteSecretByQualifiedKey(baseURL, qualifiedKey string) error {
+	storeName, key, err := parseQualifiedKey(qualifiedKey)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodDelete, secretEndpoint(baseURL, storeName, key), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete failed: %s", body)
+	}
+	return nil
+}
+
 func zipDirectory(sourceDir, targetZip string) error {
 	if err := os.MkdirAll(filepath.Dir(targetZip), 0o755); err != nil {
 		return err
@@ -1424,14 +1480,15 @@ func completeDaemonWords(words []string, current string) []string {
 func completeSecretWords(words []string, current string) []string {
 	storePrefixes := listStorePrefixes()
 	if len(words) == 0 {
-		return filterCompletions([]string{"set", "get", "delete", "delete-prefix", "glob", "list", "--help"}, current)
+		return filterCompletions([]string{"set", "get", "delete", "copy", "move", "delete-prefix", "glob", "list", "--help"}, current)
 	}
 	sub := words[0]
 	flagsForSet := []string{"--name", "--value", "--file", "--stdin", "--twice", "--help"}
 	flagsForGet := []string{"--name", "--out", "--help"}
 	flagsForDelete := []string{"--name", "--help"}
+	flagsForTransfer := []string{"--force", "--help"}
 	flagsForDeletePrefix := []string{"--dry-run", "--yes", "--help"}
-	if sub == "set" || sub == "get" || sub == "delete" || sub == "delete-prefix" {
+	if sub == "set" || sub == "get" || sub == "delete" || sub == "copy" || sub == "move" || sub == "delete-prefix" {
 		if strings.Contains(current, ":") || (len(words) > 1 && words[len(words)-1] == "--name") {
 			return completeQualifiedSecret(current)
 		}
@@ -1440,6 +1497,8 @@ func completeSecretWords(words []string, current string) []string {
 		switch sub {
 		case "set", "get", "delete", "delete-prefix", "glob":
 			return filterCompletions(append(storePrefixes, "--name", "--help"), current)
+		case "copy", "move":
+			return filterCompletions(append(storePrefixes, flagsForTransfer...), current)
 		case "list":
 			return filterCompletions(append(storePrefixes, "--raw", "--help"), current)
 		}
@@ -1452,6 +1511,9 @@ func completeSecretWords(words []string, current string) []string {
 	}
 	if sub == "delete" {
 		return filterCompletions(append(storePrefixes, flagsForDelete...), current)
+	}
+	if sub == "copy" || sub == "move" {
+		return filterCompletions(append(storePrefixes, flagsForTransfer...), current)
 	}
 	if sub == "delete-prefix" {
 		return filterCompletions(append(storePrefixes, flagsForDeletePrefix...), current)
@@ -2109,6 +2171,10 @@ func runSecret(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return secretGet(baseURL, args[1:], outputFmt, out)
 	case "delete":
 		return secretDelete(baseURL, args[1:], out)
+	case "copy":
+		return secretTransfer(baseURL, args[1:], false, out)
+	case "move":
+		return secretTransfer(baseURL, args[1:], true, out)
 	case "delete-prefix":
 		return secretDeletePrefix(baseURL, args[1:], out)
 	case "glob":
@@ -2308,6 +2374,68 @@ func secretDelete(baseURL string, args []string, out io.Writer) error {
 		return fmt.Errorf("delete failed: %s", body)
 	}
 	fmt.Fprintf(out, "secret removed from %s\n", storeName)
+	return nil
+}
+
+func secretTransfer(baseURL string, args []string, move bool, out io.Writer) error {
+	force := false
+	positionals := make([]string, 0, 2)
+	for _, arg := range args {
+		switch arg {
+		case "--force":
+			force = true
+		case "":
+			continue
+		default:
+			if strings.HasPrefix(arg, "--") {
+				verb := "copy"
+				if move {
+					verb = "move"
+				}
+				return fmt.Errorf("usage: vaultline secret %s [oldstore:]oldname [newstore:]newname [--force]", verb)
+			}
+			positionals = append(positionals, arg)
+		}
+	}
+	if len(positionals) != 2 {
+		verb := "copy"
+		if move {
+			verb = "move"
+		}
+		return fmt.Errorf("usage: vaultline secret %s [oldstore:]oldname [newstore:]newname [--force]", verb)
+	}
+
+	source := strings.TrimSpace(positionals[0])
+	target := strings.TrimSpace(positionals[1])
+	if source == target {
+		return fmt.Errorf("source and destination must differ")
+	}
+
+	targetExists, err := secretExists(baseURL, target)
+	if err != nil {
+		return err
+	}
+	if targetExists && !force {
+		return fmt.Errorf("destination secret %s already exists; use --force to overwrite", target)
+	}
+
+	value, err := readSecretValue(baseURL, source)
+	if err != nil {
+		return err
+	}
+	if err := putSecret(baseURL, target, value); err != nil {
+		return err
+	}
+
+	if move {
+		if err := deleteSecretByQualifiedKey(baseURL, source); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "secret moved %s -> %s\n", source, target)
+		return nil
+	}
+
+	fmt.Fprintf(out, "secret copied %s -> %s\n", source, target)
 	return nil
 }
 

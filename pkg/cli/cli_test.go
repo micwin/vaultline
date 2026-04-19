@@ -3,10 +3,13 @@ package cli
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/micwin/vaultline/internal/daemoncfg"
+	"github.com/micwin/vaultline/pkg/api"
 	"github.com/micwin/vaultline/pkg/stores"
 )
 
@@ -434,6 +438,112 @@ func TestSecretGlobMatchesAcrossStores(t *testing.T) {
 	}
 	if strings.Contains(output, "team.other") || strings.Contains(output, "default:app.demo.one") {
 		t.Fatalf("unexpected non-matching entries in output: %s", output)
+	}
+}
+
+func TestSecretTransferCopyMoveAndForce(t *testing.T) {
+	secrets := map[string]string{
+		"source:alpha": base64.StdEncoding.EncodeToString([]byte("from-source")),
+		"target:alpha": base64.StdEncoding.EncodeToString([]byte("existing-target")),
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/v1/stores/") || !strings.Contains(r.URL.Path, "/secrets/") {
+			http.NotFound(w, r)
+			return
+		}
+		rest := strings.TrimPrefix(r.URL.Path, "/api/v1/stores/")
+		parts := strings.SplitN(rest, "/secrets/", 2)
+		if len(parts) != 2 {
+			http.NotFound(w, r)
+			return
+		}
+		storeName, err := url.PathUnescape(parts[0])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		keyName, err := url.PathUnescape(parts[1])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		qualified := storeName + ":" + keyName
+		switch r.Method {
+		case http.MethodGet:
+			value, ok := secrets[qualified]
+			if !ok {
+				http.Error(w, `{"error":"SECRET_NOT_FOUND"}`, http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: value, Version: "v1"})
+		case http.MethodPut:
+			var payload api.SecretRequest
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			secrets[qualified] = payload.Value
+			w.WriteHeader(http.StatusOK)
+		case http.MethodDelete:
+			if _, ok := secrets[qualified]; !ok {
+				http.Error(w, `{"error":"SECRET_NOT_FOUND"}`, http.StatusNotFound)
+				return
+			}
+			delete(secrets, qualified)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	err := secretTransfer(server.URL, []string{"source:alpha", "target:alpha"}, false, &out)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected collision error without --force, got %v", err)
+	}
+	if got := secrets["target:alpha"]; got != base64.StdEncoding.EncodeToString([]byte("existing-target")) {
+		t.Fatalf("target changed on failed copy")
+	}
+
+	out.Reset()
+	if err := secretTransfer(server.URL, []string{"source:alpha", "target:alpha", "--force"}, false, &out); err != nil {
+		t.Fatalf("forced copy failed: %v", err)
+	}
+	if got := secrets["target:alpha"]; got != base64.StdEncoding.EncodeToString([]byte("from-source")) {
+		t.Fatalf("forced copy did not overwrite target")
+	}
+	if _, ok := secrets["source:alpha"]; !ok {
+		t.Fatalf("copy should keep source secret")
+	}
+
+	out.Reset()
+	if err := secretTransfer(server.URL, []string{"source:alpha", "target:beta"}, true, &out); err != nil {
+		t.Fatalf("move failed: %v", err)
+	}
+	if _, ok := secrets["source:alpha"]; ok {
+		t.Fatalf("move should remove source secret")
+	}
+	if got := secrets["target:beta"]; got != base64.StdEncoding.EncodeToString([]byte("from-source")) {
+		t.Fatalf("move destination mismatch")
+	}
+}
+
+func TestCompleteSecretWordsIncludesCopyMove(t *testing.T) {
+	subs := completeWords([]string{"secret"}, "c")
+	if len(subs) == 0 || subs[0] != "copy" {
+		t.Fatalf("expected copy suggestion, got %#v", subs)
+	}
+	flags := completeWords([]string{"secret", "copy"}, "--f")
+	foundForce := false
+	for _, item := range flags {
+		if item == "--force" {
+			foundForce = true
+			break
+		}
+	}
+	if !foundForce {
+		t.Fatalf("expected --force completion, got %#v", flags)
 	}
 }
 

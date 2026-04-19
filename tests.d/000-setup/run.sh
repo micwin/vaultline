@@ -3,6 +3,7 @@ set -euo pipefail
 
 export VAULTLINE_TEST_STORE="${SMOKEY_STATE_DIR}/store"
 export VAULTLINE_TEST_PROJECT_STORE="${SMOKEY_STATE_DIR}/stores/project-a"
+export VAULTLINE_TEST_FIXTURES="${SMOKEY_STATE_DIR}/fixtures"
 STORE_CONFIG_DIR="${SMOKEY_STATE_DIR}/config"
 export VAULTLINE_TEST_STORE_CONFIG="${STORE_CONFIG_DIR}/stores.json"
 export VAULTLINE_TEST_STORE_DATA="${SMOKEY_STATE_DIR}/data"
@@ -14,6 +15,11 @@ export VAULTLINE_TEST_PID=""
 
 echo "[000-setup] preparing workspace under ${SMOKEY_STATE_DIR}"
 mkdir -p "${VAULTLINE_TEST_STORE}"
+mkdir -p "${VAULTLINE_TEST_FIXTURES}"
+cp "${SMOKEY_TEST_ROOT}/../testdata/secret-value.txt" "${VAULTLINE_TEST_FIXTURES}/secret-value.txt"
+mkdir -p "${VAULTLINE_TEST_FIXTURES}/secret-copy-move"
+cp "${SMOKEY_TEST_ROOT}/../testdata/secret-copy-move/source-value.txt" "${VAULTLINE_TEST_FIXTURES}/secret-copy-move/source-value.txt"
+cp "${SMOKEY_TEST_ROOT}/../testdata/secret-copy-move/destination-value.txt" "${VAULTLINE_TEST_FIXTURES}/secret-copy-move/destination-value.txt"
 
 echo "[000-setup] checking go toolchain"
 GO_BIN=$(command -v go)
@@ -48,6 +54,7 @@ for name in \
   VAULTLINE_TEST_PASS \
   VAULTLINE_TEST_STORE \
   VAULTLINE_TEST_PROJECT_STORE \
+  VAULTLINE_TEST_FIXTURES \
   VAULTLINE_TEST_STORE_CONFIG \
   VAULTLINE_TEST_STORE_DATA \
   VAULTLINE_TEST_PID \

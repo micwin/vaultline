@@ -5,7 +5,7 @@ source "${SMOKEY_TEST_ROOT}/vaultline-testlib.sh"
 vaultline_require_setup
 
 value_file="${SMOKEY_STATE_DIR}/kv-check.txt"
-fixture="${SMOKEY_TEST_ROOT}/../testdata/secret-value.txt"
+fixture="${VAULTLINE_TEST_FIXTURES}/secret-value.txt"
 trap 'rm -f "${value_file}"' EXIT
 
 [[ -f "${fixture}" ]] || { echo "[040-key-validation] missing fixture ${fixture}" >&2; exit 1; }

@@ -9,10 +9,11 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.35</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.36</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
+      <a href="/vaultline/docs/">Docs</a>
       <a href="https://github.com/micwin/vaultline">GitHub</a>
     </nav>
   </header>
@@ -30,10 +31,8 @@
 
 <h2 id="quick-start">Quick start</h2>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Assumes the local daemon is already running on default address (127.0.0.1:8428)</span>
-
-<span class="c"># Create and register a named store</span>
-vaultline store init mystore ./stores/mystore
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Create and register a named store</span>
+vaultline store init mystore
 
 <span class="c"># Save a secret interactively (input stays hidden)</span>
 vaultline secret <span class="nb">set </span>mystore:token <span class="nt">--stdin</span>
@@ -63,4 +62,3 @@ vaultline store unseal mystore <span class="nt">--from-secret</span> superstore:
   </main>
 </body>
 </html>
-

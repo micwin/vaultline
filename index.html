@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.34</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.35</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
@@ -30,20 +30,19 @@
 
 <h2 id="quick-start">Quick start</h2>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Startet den lokalen Daemon (Default: 127.0.0.1:8428)</span>
-vaultline daemon <span class="nt">--store-dir</span> ./store
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Assumes the local daemon is already running on default address (127.0.0.1:8428)</span>
 
-<span class="c"># Legt einen zusätzlichen Store an und registriert ihn</span>
-vaultline store init ai ./stores/ai
+<span class="c"># Create and register a named store</span>
+vaultline store init mystore ./stores/mystore
 
-<span class="c"># Speichert ein Secret interaktiv (Eingabe wird nicht angezeigt)</span>
-vaultline secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
+<span class="c"># Save a secret interactively (input stays hidden)</span>
+vaultline secret <span class="nb">set </span>mystore:token <span class="nt">--stdin</span>
 
-<span class="c"># Liest ein Secret in eine Datei</span>
-vaultline secret get ai:token <span class="nt">--out</span> ./token.txt
+<span class="c"># Read a secret into a file</span>
+vaultline secret get mystore:token <span class="nt">--out</span> ./token.txt
 
-<span class="c"># Cross-store-Unseal: Passphrase aus anderem Store lesen</span>
-vaultline store unseal ai <span class="nt">--from-secret</span> superstore:ai.unseal
+<span class="c"># Cross-store unseal: read unseal material from another store</span>
+vaultline store unseal mystore <span class="nt">--from-secret</span> superstore:mystore.unseal
 </code></pre></div></div>
 
 <h2 id="recent-operations-focus">Recent operations focus</h2>

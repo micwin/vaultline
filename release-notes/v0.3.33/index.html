@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Release Notes v0.3.33 · vaultline</title>
+  <meta name="description" content="Secure, local-first secret storage with defined operational flows.">
+  <link rel="stylesheet" href="/vaultline/assets/theme.css">
+</head>
+<body>
+  <header class="shell chrome">
+    <div class="brand">vaultline <span class="version">v0.3.33</span></div>
+    <nav>
+      <a href="/vaultline/">Overview</a>
+      <a href="/vaultline/downloads/">Downloads</a>
+      <a href="https://github.com/micwin/vaultline">GitHub</a>
+    </nav>
+  </header>
+  <main class="shell panel">
+    <h1 id="release-notes-v0333">Release Notes v0.3.33</h1>
+
+<h2 id="changes">Changes</h2>
+
+<ul>
+  <li>Added <code class="language-plaintext highlighter-rouge">vl</code> Debian package alias (<code class="language-plaintext highlighter-rouge">/usr/local/bin/vl -&gt; vaultline</code>) for shorter CLI usage.</li>
+  <li>Added completion support for both <code class="language-plaintext highlighter-rouge">vaultline</code> and <code class="language-plaintext highlighter-rouge">vl</code>, including <code class="language-plaintext highlighter-rouge">store unseal --from-secret</code> cross-store completion flow.</li>
+  <li>Added top-level <code class="language-plaintext highlighter-rouge">version</code> command and aligned <code class="language-plaintext highlighter-rouge">--version</code> to print only the raw version string.</li>
+  <li>Improved unknown-command UX by printing usage alongside the error.</li>
+  <li>Updated docs quick-start examples to use the installed <code class="language-plaintext highlighter-rouge">vaultline</code> binary instead of <code class="language-plaintext highlighter-rouge">go run</code>.</li>
+</ul>
+
+  </main>
+</body>
+</html>
+

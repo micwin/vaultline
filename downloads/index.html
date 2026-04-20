@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.32</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.33</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
@@ -19,22 +19,25 @@
   <main class="shell panel">
     <h1 id="downloads">Downloads</h1>
 
-<h2 id="current-v0332">Current (v0.3.32)</h2>
+<h2 id="current-v0333">Current (v0.3.33)</h2>
 
 <h3 id="changes">Changes</h3>
 
 <ul>
   <li>
-    <p>Added structured release metadata for Downloads (<code class="language-plaintext highlighter-rouge">current.json</code> and <code class="language-plaintext highlighter-rouge">releases.json</code>).</p>
+    <p>Added <code class="language-plaintext highlighter-rouge">vl</code> Debian package alias (<code class="language-plaintext highlighter-rouge">/usr/local/bin/vl -&gt; vaultline</code>) for shorter CLI usage.</p>
   </li>
   <li>
-    <p>Added best-effort historical release notes for prior versions.</p>
+    <p>Added completion support for both <code class="language-plaintext highlighter-rouge">vaultline</code> and <code class="language-plaintext highlighter-rouge">vl</code>, including <code class="language-plaintext highlighter-rouge">store unseal --from-secret</code> cross-store completion flow.</p>
   </li>
   <li>
-    <p>Updated release tooling to aggregate unreleased snippets into versioned notes.</p>
+    <p>Added top-level <code class="language-plaintext highlighter-rouge">version</code> command and aligned <code class="language-plaintext highlighter-rouge">--version</code> to print only the raw version string.</p>
   </li>
   <li>
-    <p>Updated Downloads page with dedicated columns for deb, binary, GitHub release, and notes.</p>
+    <p>Improved unknown-command UX by printing usage alongside the error.</p>
+  </li>
+  <li>
+    <p>Updated docs quick-start examples to use the installed <code class="language-plaintext highlighter-rouge">vaultline</code> binary instead of <code class="language-plaintext highlighter-rouge">go run</code>.</p>
   </li>
 </ul>
 
@@ -53,6 +56,15 @@
   </thead>
   <tbody>
     
+      
+      <tr>
+        <td>v0.3.33</td>
+        <td>2026-04-20</td>
+        <td><a href="https://github.com/micwin/vaultline/releases/download/v0.3.33/vaultline_0.3.33_amd64.deb">.deb</a></td>
+        <td><a href="https://github.com/micwin/vaultline/releases/download/v0.3.33/vaultline">vaultline</a></td>
+        <td><a href="https://github.com/micwin/vaultline/releases/tag/v0.3.33">GitHub</a></td>
+        <td><a href="/vaultline/release-notes/v0.3.33/">notes</a></td>
+      </tr>
       
       <tr>
         <td>v0.3.32</td>

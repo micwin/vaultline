@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.32</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.33</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
@@ -30,10 +30,10 @@
 
 <h2 id="quick-start">Quick start</h2>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>go run ./cmd/vaultline daemon <span class="nt">--addr</span> 127.0.0.1:8428 <span class="nt">--store-dir</span> ./store
-go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 store init ai ./stores/ai
-go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
-go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret get ai:token <span class="nt">--out</span> ./token.txt
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vaultline daemon <span class="nt">--addr</span> 127.0.0.1:8428 <span class="nt">--store-dir</span> ./store
+vaultline <span class="nt">--addr</span> 127.0.0.1:8428 store init ai ./stores/ai
+vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
+vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret get ai:token <span class="nt">--out</span> ./token.txt
 </code></pre></div></div>
 
 <h2 id="recent-operations-focus">Recent operations focus</h2>
@@ -50,7 +50,6 @@ go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret get 
   <li>use <a href="/vaultline/downloads/">Downloads</a> for release artifacts</li>
   <li>use <code class="language-plaintext highlighter-rouge">RELEASING.md</code> in repo root for release flow</li>
 </ul>
-
 
   </main>
 </body>

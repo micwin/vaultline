@@ -600,6 +600,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operational-hardening-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational hardening checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#developer-references" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -797,6 +808,7 @@
 <li><a href="#release-flow">Release flow</a></li>
 <li><a href="#sitedocs-workflow">Site/docs workflow</a></li>
 <li><a href="#helper-scripts">Helper scripts</a></li>
+<li><a href="#operational-hardening-checklist">Operational hardening checklist</a></li>
 <li><a href="#developer-references">Developer references</a></li>
 </ul>
 <h2 id="development-cycle">Development cycle</h2>
@@ -852,6 +864,17 @@
 <li><code>scripts/prepare-release.sh</code> — bumps to target version, builds artifacts, merges unreleased notes into versioned notes, updates downloads metadata.</li>
 <li><code>scripts/release.sh</code> — fast-forwards <code>release</code> from <code>develop</code> and pushes it to trigger CI release/publish.</li>
 <li><code>scripts/publish-release.sh</code> — push helper when already on <code>release</code>.</li>
+</ul>
+<h2 id="operational-hardening-checklist">Operational hardening checklist</h2>
+<ul>
+<li>Keep daemon listeners on loopback by default; only add remote binds deliberately.</li>
+<li>Use allowlists for every non-loopback listener (<code>daemon allow ...</code>), and review them regularly.</li>
+<li>Keep stores sealed by default and unseal only what is needed for the current task.</li>
+<li>Prefer cross-store unseal material (<code>store unseal --from-secret</code>) over manual passphrase sharing.</li>
+<li>Backup before broad writes/imports (<code>backup zip &lt;store&gt;</code>) and verify restore workflow periodically.</li>
+<li>Rotate sensitive passphrases/secrets on a regular cadence and after operator or host changes.</li>
+<li>Restrict filesystem access to store/config paths (<code>~/.local/share/vaultline</code>, <code>~/.config/vaultline</code>).</li>
+<li>After package upgrades/restarts, verify health and seal state explicitly (<code>vaultline health</code>).</li>
 </ul>
 <h2 id="developer-references">Developer references</h2>
 <ul>

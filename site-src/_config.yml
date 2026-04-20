@@ -1,10 +1,9 @@
 title: vaultline
 description: Secure, local-first secret storage with defined operational flows.
-baseurl: ""
+baseurl: "/vaultline"
 url: "https://micwin.github.io/vaultline"
 markdown: kramdown
 permalink: pretty
 vaultline_version: "dev"
 repo_owner: micwin
 repo_name: vaultline
-

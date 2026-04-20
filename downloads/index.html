@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Downloads · vaultline</title>
+  <meta name="description" content="Secure, local-first secret storage with defined operational flows.">
+  <link rel="stylesheet" href="/assets/theme.css">
+</head>
+<body>
+  <header class="shell chrome">
+    <div class="brand">vaultline <span class="version">v0.3.31</span></div>
+    <nav>
+      <a href="/">Overview</a>
+      <a href="/downloads/">Downloads</a>
+      <a href="https://github.com/micwin/vaultline">GitHub</a>
+    </nav>
+  </header>
+  <main class="shell panel">
+    <h1 id="downloads">Downloads</h1>
+
+<p>Latest known version from repository: <strong>0.3.31</strong></p>
+
+<p class="muted">Release assets are loaded from GitHub Releases.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Version</th>
+      <th>Published</th>
+      <th>Artifacts</th>
+    </tr>
+  </thead>
+  <tbody id="release-table">
+    <tr><td colspan="3" class="muted">Loading release metadata...</td></tr>
+  </tbody>
+</table>
+
+<script>
+(() => {
+  const owner = "micwin";
+  const repo = "vaultline";
+  const tbody = document.getElementById('release-table');
+
+  function releaseRow(release) {
+    const assets = (release.assets || []).map(asset => {
+      return `<a href="${asset.browser_download_url}">${asset.name}</a>`;
+    }).join('<br>');
+
+    const published = new Date(release.published_at || release.created_at).toISOString().slice(0, 10);
+    return `<tr>
+      <td><a href="${release.html_url}">${release.tag_name}</a></td>
+      <td>${published}</td>
+      <td>${assets || '<span class="muted">no assets</span>'}</td>
+    </tr>`;
+  }
+
+  fetch(`https://api.github.com/repos/${owner}/${repo}/releases`)
+    .then(res => {
+      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
+      return res.json();
+    })
+    .then(releases => {
+      if (!Array.isArray(releases) || releases.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="muted">No releases found.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = releases.map(releaseRow).join('');
+    })
+    .catch(err => {
+      tbody.innerHTML = `<tr><td colspan="3" class="muted">Failed to load releases: ${err.message}</td></tr>`;
+    });
+})();
+</script>
+
+
+  </main>
+</body>
+</html>
+

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Overview · vaultline</title>
+  <meta name="description" content="Secure, local-first secret storage with defined operational flows.">
+  <link rel="stylesheet" href="/assets/theme.css">
+</head>
+<body>
+  <header class="shell chrome">
+    <div class="brand">vaultline <span class="version">v0.3.31</span></div>
+    <nav>
+      <a href="/">Overview</a>
+      <a href="/downloads/">Downloads</a>
+      <a href="https://github.com/micwin/vaultline">GitHub</a>
+    </nav>
+  </header>
+  <main class="shell panel">
+    <h1 id="vaultline">vaultline</h1>
+
+<p><code class="language-plaintext highlighter-rouge">vaultline</code> is a local-first secret vault with a clear operational model:</p>
+
+<ul>
+  <li>sealed by default</li>
+  <li>explicit unseal flows</li>
+  <li>deterministic secret file layout</li>
+  <li>automation-friendly CLI + daemon API</li>
+</ul>
+
+<h2 id="quick-start">Quick start</h2>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>go run ./cmd/vaultline daemon <span class="nt">--addr</span> 127.0.0.1:8428 <span class="nt">--store-dir</span> ./store
+go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 store init ai ./stores/ai
+go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
+go run ./cmd/vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret get ai:token <span class="nt">--out</span> ./token.txt
+</code></pre></div></div>
+
+<h2 id="recent-operations-focus">Recent operations focus</h2>
+
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">secret copy</code> / <code class="language-plaintext highlighter-rouge">secret move</code> with collision-safe default and explicit <code class="language-plaintext highlighter-rouge">--force</code></li>
+  <li><code class="language-plaintext highlighter-rouge">store unseal --from-secret &lt;store:key&gt;</code> to retrieve unseal material from another store</li>
+  <li>reproducible smokey suite with fully isolated runtime state</li>
+</ul>
+
+<h2 id="docs-and-releases">Docs and releases</h2>
+
+<ul>
+  <li>use <a href="/downloads/">Downloads</a> for release artifacts</li>
+  <li>use <code class="language-plaintext highlighter-rouge">RELEASING.md</code> in repo root for release flow</li>
+</ul>
+
+
+  </main>
+</body>
+</html>
+

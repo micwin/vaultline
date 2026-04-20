@@ -1,9 +1,10 @@
 {
-  "version": "0.3.32",
+  "version": "0.3.33",
   "changes": [
-    "Added structured release metadata for Downloads (`current.json` and `releases.json`).",
-    "Added best-effort historical release notes for prior versions.",
-    "Updated release tooling to aggregate unreleased snippets into versioned notes.",
-    "Updated Downloads page with dedicated columns for deb, binary, GitHub release, and notes."
+    "Added `vl` Debian package alias (`/usr/local/bin/vl -> vaultline`) for shorter CLI usage.",
+    "Added completion support for both `vaultline` and `vl`, including `store unseal --from-secret` cross-store completion flow.",
+    "Added top-level `version` command and aligned `--version` to print only the raw version string.",
+    "Improved unknown-command UX by printing usage alongside the error.",
+    "Updated docs quick-start examples to use the installed `vaultline` binary instead of `go run`."
   ]
 }

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% if page.title %}{{ page.title }} · {% endif %}vaultline</title>
+  <meta name="description" content="{{ page.description | default: site.description }}">
+  <link rel="stylesheet" href="{{ '/assets/theme.css' | relative_url }}">
+</head>
+<body>
+  <header class="shell chrome">
+    <div class="brand">vaultline <span class="version">v{{ site.vaultline_version }}</span></div>
+    <nav>
+      <a href="{{ '/' | relative_url }}">Overview</a>
+      <a href="{{ '/downloads/' | relative_url }}">Downloads</a>
+      <a href="https://github.com/{{ site.repo_owner }}/{{ site.repo_name }}">GitHub</a>
+    </nav>
+  </header>
+  <main class="shell panel">
+    {{ content }}
+  </main>
+</body>
+</html>
+

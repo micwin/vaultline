@@ -6,3 +6,4 @@ site/
 *.log
 .smokey-state/
 tests.d/.smokey-state/
+site-src/.jekyll-cache/

@@ -70,6 +70,12 @@ vaultline/
 - The multi-stage `Dockerfile` produces a single `vaultline` binary; runtime image defaults to the non-root `vaultline` user and exposes 8428/TCP.
 
 ## Releasing
-- Bump the version by running `./package-deb.sh` (or pass the desired version explicitly: `./package-deb.sh 0.2.8`). This updates `pkg/version/version.go` and builds `dist/vaultline_<version>_amd64.deb`. Add `--install` to install the package immediately after the build (`./package-deb.sh --install` or `./package-deb.sh 0.2.8 --install`).
-- Merge `develop` into `release` and push `release` to GitHub. The `Release vaultline` workflow tags the commit, builds the Debian package, and publishes a GitHub Release with the `.deb` attached.
-- After the workflow finishes, download artifacts from the Releases page or install via `dpkg -i dist/vaultline_<version>_amd64.deb`.
+- Use `./scripts/prepare-release.sh` (optionally with version argument) to run the orchestrated build (`scripts/build.sh`) for package + site assets.
+- Commit release prep changes on `develop`, then run `./scripts/release.sh`.
+- Pushing `release` triggers GitHub Actions to tag, publish GitHub Release artifacts (`.deb` + raw binary), and deploy the Pages site.
+- See `RELEASING.md` for the full flow.
+
+## Docs / site
+- The project site is a Jekyll build under `site-src/`.
+- Build static output with `./scripts/build-site.sh` (renders into `site/`).
+- Serve locally with `./scripts/ghpages-serve.sh`.

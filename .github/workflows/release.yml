@@ -21,6 +21,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
       - name: Determine version
         id: vars
         run: |
@@ -31,8 +36,8 @@ jobs:
           fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
 
-      - name: Build package
-        run: ./package-deb.sh "${{ steps.vars.outputs.version }}"
+      - name: Build artifacts
+        run: ./scripts/build.sh --deb --site --version "${{ steps.vars.outputs.version }}"
 
       - name: Create git tag
         env:
@@ -50,6 +55,15 @@ jobs:
         with:
           tag_name: v${{ steps.vars.outputs.version }}
           name: vaultline v${{ steps.vars.outputs.version }}
-          files: dist/vaultline_${{ steps.vars.outputs.version }}_amd64.deb
+          files: |
+            dist/vaultline_${{ steps.vars.outputs.version }}_amd64.deb
+            dist/vaultline
           draft: false
           prerelease: false
+
+      - name: Deploy Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: pages
+          publish_dir: ./site

@@ -15,20 +15,19 @@ title: Overview
 ## Quick start
 
 ```bash
-# Startet den lokalen Daemon (Default: 127.0.0.1:8428)
-vaultline daemon --store-dir ./store
+# Assumes the local daemon is already running on default address (127.0.0.1:8428)
 
-# Legt einen zusätzlichen Store an und registriert ihn
-vaultline store init ai ./stores/ai
+# Create and register a named store
+vaultline store init mystore ./stores/mystore
 
-# Speichert ein Secret interaktiv (Eingabe wird nicht angezeigt)
-vaultline secret set ai:token --stdin
+# Save a secret interactively (input stays hidden)
+vaultline secret set mystore:token --stdin
 
-# Liest ein Secret in eine Datei
-vaultline secret get ai:token --out ./token.txt
+# Read a secret into a file
+vaultline secret get mystore:token --out ./token.txt
 
-# Cross-store-Unseal: Passphrase aus anderem Store lesen
-vaultline store unseal ai --from-secret superstore:ai.unseal
+# Cross-store unseal: read unseal material from another store
+vaultline store unseal mystore --from-secret superstore:mystore.unseal
 ```
 
 ## Recent operations focus

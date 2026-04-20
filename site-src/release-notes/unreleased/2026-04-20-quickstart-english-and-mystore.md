@@ -1,0 +1,4 @@
+- Updated the site Quick Start to fully English wording and comments.
+- Removed daemon startup from Quick Start and clarified it is assumed to be running locally.
+- Renamed example store usage from `ai` to `mystore` throughout Quick Start commands.
+- Added a cross-store unseal example using `mystore` with `--from-secret`.

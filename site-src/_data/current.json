@@ -1,6 +1,7 @@
 {
-  "version": "0.3.40",
+  "version": "0.3.41",
   "changes": [
-    "Added an explicit `Homepage` link in the docs header for direct navigation back to `/vaultline/`."
+    "GitHub release publishing now uses the versioned release-notes content as release body text.",
+    "Release workflow strips Jekyll frontmatter and uploads a clean markdown body via `body_path`."
   ]
 }

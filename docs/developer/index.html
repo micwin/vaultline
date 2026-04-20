@@ -139,6 +139,13 @@
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
+
+    <a
+      class="md-header__button md-header__home-link"
+      href="/vaultline/"
+      aria-label="Homepage"
+    >Homepage</a>
+
     
       
       
@@ -721,6 +728,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#build-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Build workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sitedocs-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -812,6 +830,7 @@
 <li><a href="#prerequisites">Prerequisites</a></li>
 <li><a href="#initial-setup">Initial setup</a></li>
 <li><a href="#test-workflow">Test workflow</a></li>
+<li><a href="#build-workflow">Build workflow</a></li>
 <li><a href="#sitedocs-workflow">Site/docs workflow</a></li>
 <li><a href="#release-handoff-expectations">Release handoff expectations</a></li>
 </ul>
@@ -830,6 +849,24 @@
 smokey --tests-dir tests.d
 </code></pre>
 <p>Use focused package tests first, then full suite before release prep.</p>
+<h2 id="build-workflow">Build workflow</h2>
+<p>Default build (compile + deb package):</p>
+<pre><code class="language-bash">./scripts/build.sh
+</code></pre>
+<p>Targeted builds:</p>
+<pre><code class="language-bash">./scripts/build.sh --compile
+./scripts/build.sh --deb
+./scripts/build.sh --site
+./scripts/build.sh --clean --deb --site
+</code></pre>
+<p>Version bump during build:</p>
+<pre><code class="language-bash">./scripts/build.sh --deb --version X.Y.Z
+</code></pre>
+<p>Release guardrail:</p>
+<ul>
+<li>Do not bump versions directly on <code>release</code> branch.</li>
+<li>Perform version bump and release prep on <code>develop</code> via <code>./scripts/prepare-release.sh &lt;X.Y.Z&gt;</code>.</li>
+</ul>
 <h2 id="sitedocs-workflow">Site/docs workflow</h2>
 <pre><code class="language-bash">./scripts/build-site.sh
 ./scripts/serve-site.sh

@@ -15,10 +15,8 @@ title: Overview
 ## Quick start
 
 ```bash
-# Assumes the local daemon is already running on default address (127.0.0.1:8428)
-
 # Create and register a named store
-vaultline store init mystore ./stores/mystore
+vaultline store init mystore
 
 # Save a secret interactively (input stays hidden)
 vaultline secret set mystore:token --stdin

@@ -1,0 +1,36 @@
+site_name: vaultline docs
+site_description: Vaultline reference and operational documentation
+site_url: https://micwin.github.io/vaultline/docs/
+repo_url: https://github.com/micwin/vaultline
+repo_name: micwin/vaultline
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.tracking
+    - toc.integrate
+    - content.code.copy
+  palette:
+    - scheme: slate
+      primary: black
+      accent: cyan
+
+extra_css:
+  - stylesheets/theme.css
+
+nav:
+  - Overview: index.md
+  - Architecture:
+      - Overview: architecture.md
+      - Store Model: store-model.md
+  - Operations:
+      - Daemon & API: daemon.md
+      - Runbook (Project Workflow): runbook.md
+      - Bitwarden Import: bitwarden.md
+  - Development:
+      - Developer Ramp-up: developer.md
+  - CLI: cli.md

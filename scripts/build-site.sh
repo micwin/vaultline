@@ -36,4 +36,12 @@ cp _config.yml "${TMP_CONFIG}"
 BUNDLE_PATH="${ROOT_DIR}/dist/bundle" bundle exec jekyll build --config "${TMP_CONFIG}" --destination "${OUT_DIR}"
 popd >/dev/null
 
-echo "Built Jekyll site for vaultline ${VERSION} -> ${OUT_DIR}"
+if ! command -v mkdocs >/dev/null 2>&1; then
+  echo "build-site: mkdocs not found" >&2
+  echo "install pinned docs toolchain with: python -m pip install -r docs/requirements.txt" >&2
+  exit 1
+fi
+
+NO_MKDOCS_2_WARNING=true mkdocs build --config-file "${ROOT_DIR}/mkdocs.yml" --site-dir "${OUT_DIR}/docs"
+
+echo "Built site (Jekyll + MkDocs) for vaultline ${VERSION} -> ${OUT_DIR}"

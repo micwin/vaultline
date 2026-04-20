@@ -1,34 +1,32 @@
 # Releasing vaultline
 
-This repo follows a `develop -> release` publishing flow.
+Release flow is `develop -> release`.
 
-## 1) Prepare artifacts
-- Run `./scripts/prepare-release.sh` (optionally with explicit version: `./scripts/prepare-release.sh 0.3.32`).
-- This runs the orchestrator `./scripts/build.sh --deb --site` (and `--version` when provided).
-- Review and commit resulting changes on `develop`.
+## Short checklist
 
-Release notes flow:
-- Add snippets into `site-src/release-notes/unreleased/*.md`.
-- `prepare-release.sh` merges snippets into `site-src/release-notes/vX.Y.Z.md`.
-- It also updates:
-  - `site-src/_data/current.json` for the “Current (vX.Y.Z)” section on Downloads
-  - `site-src/_data/releases.json` for the downloads table rows
+1. Prepare release artifacts and notes on `develop`:
 
-Jekyll notes:
-- Pages source is `site-src/`.
-- Local preview: `./scripts/ghpages-serve.sh`.
-- Static output for deploy: `site/`.
+   ```bash
+   ./scripts/prepare-release.sh <X.Y.Z>
+   ```
 
-## 2) Publish release branch
-- Run `./scripts/release.sh` from a clean `develop` branch.
-- The script fast-forwards `release` to `develop` and pushes it.
+2. Review and commit generated changes on `develop`.
+3. Push `develop`.
+4. Publish `release` branch:
 
-## 3) GitHub Actions does the rest
-Workflow `.github/workflows/release.yml` (triggered by `release` push):
-- builds artifacts via `./scripts/build.sh --deb --site --version <version>`
-- creates/pushes tag `v<version>`
-- publishes GitHub Release with `.deb` and raw binary
-- deploys `site/` to GitHub Pages
+   ```bash
+   ./scripts/release.sh
+   ```
 
-## 4) Optional manual push helper
-- If you are already on `release` and only need to push it: `./scripts/publish-release.sh`.
+5. GitHub Actions builds artifacts, tags `vX.Y.Z`, publishes the release, and deploys Pages.
+
+## Important
+
+- Do not bump versions manually on `release`; always prepare on `develop` first.
+- `prepare-release.sh` handles version bump + release-note/data updates.
+
+## Full documentation
+
+- Runbook (project workflow): `docs/runbook.md`
+- Developer ramp-up: `docs/developer.md`
+- Site/docs build details: `README.md`

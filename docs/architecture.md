@@ -3,6 +3,7 @@
 ## Storage layout
 - Default store: `~/.local/share/vaultline/stores/default` (configurable via `--store-dir`)
 - Named-store registry: `~/.config/vaultline/stores.json` (configurable via `--config-file`)
+- By default, daemon and CLI share the same user-scoped config/data area (`~/.config/vaultline`, `~/.local/share/vaultline`) unless you override flags/paths.
 - Each store has its own root:
   - `.master_salt` (base64 encoded)
   - `secrets/<name>.vlx`
@@ -28,7 +29,7 @@ For each store independently:
 5. Unless `--keep-keys` is used, sealing also removes any remembered passphrase from the registry config
 
 ## API surface
-Compatibility routes still target `default`:
+Legacy default-store routes (kept so older/default-store-only workflows continue to work) target `default`:
 - `GET /api/v1/health`
 - `POST /api/v1/unseal`
 - `POST /api/v1/seal`
@@ -54,4 +55,4 @@ Named-store routes:
 `GET /api/v1/health` returns the same status in JSON and is intended to stay readable even when one project-specific store is missing.
 
 ## Testing
-Smokey suites live under `tests.d/` and spin up the daemon in `.testrun/`. They now cover both the default `local` store and an additional named store, including `store init`, `store unseal`, and prefixed `secret get/set/list` flows.
+[Smokey](https://github.com/micwin/smokey) suites live under `tests.d/` and spin up the daemon in `.testrun/`. They now cover both the default `local` store and an additional named store, including `store init`, `store unseal`, and prefixed `secret get/set/list` flows.

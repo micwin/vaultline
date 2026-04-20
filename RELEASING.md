@@ -7,6 +7,13 @@ This repo follows a `develop -> release` publishing flow.
 - This runs the orchestrator `./scripts/build.sh --deb --site` (and `--version` when provided).
 - Review and commit resulting changes on `develop`.
 
+Release notes flow:
+- Add snippets into `site-src/release-notes/unreleased/*.md`.
+- `prepare-release.sh` merges snippets into `site-src/release-notes/vX.Y.Z.md`.
+- It also updates:
+  - `site-src/_data/current.json` for the “Current (vX.Y.Z)” section on Downloads
+  - `site-src/_data/releases.json` for the downloads table rows
+
 Jekyll notes:
 - Pages source is `site-src/`.
 - Local preview: `./scripts/ghpages-serve.sh`.

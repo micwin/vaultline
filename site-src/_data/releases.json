@@ -1,0 +1,162 @@
+[
+  {
+    "version": "v0.3.32",
+    "published": "2026-04-20",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.32/vaultline_0.3.32_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.32/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.32",
+    "notes_url": "/release-notes/v0.3.32/"
+  },
+  {
+    "version": "v0.3.31",
+    "published": "2026-04-19",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.31/vaultline_0.3.31_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.31/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.31",
+    "notes_url": "/release-notes/v0.3.31/"
+  },
+  {
+    "version": "v0.3.30",
+    "published": "2026-04-19",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.30/vaultline_0.3.30_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.30/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.30",
+    "notes_url": "/release-notes/v0.3.30/"
+  },
+  {
+    "version": "v0.3.29",
+    "published": "2026-04-12",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.29/vaultline_0.3.29_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.29/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.29",
+    "notes_url": "/release-notes/v0.3.29/"
+  },
+  {
+    "version": "v0.3.25",
+    "published": "2026-03-31",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.25/vaultline_0.3.25_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.25/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.25",
+    "notes_url": "/release-notes/v0.3.25/"
+  },
+  {
+    "version": "v0.3.24",
+    "published": "2026-03-31",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.24/vaultline_0.3.24_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.24/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.24",
+    "notes_url": "/release-notes/v0.3.24/"
+  },
+  {
+    "version": "v0.3.23",
+    "published": "2026-03-31",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.23/vaultline_0.3.23_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.23/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.23",
+    "notes_url": "/release-notes/v0.3.23/"
+  },
+  {
+    "version": "v0.3.8",
+    "published": "2026-03-31",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.8/vaultline_0.3.8_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.8/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.8",
+    "notes_url": "/release-notes/v0.3.8/"
+  },
+  {
+    "version": "v0.3.4",
+    "published": "2026-03-30",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.4/vaultline_0.3.4_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.4/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.4",
+    "notes_url": "/release-notes/v0.3.4/"
+  },
+  {
+    "version": "v0.3.3",
+    "published": "2026-03-30",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.3/vaultline_0.3.3_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.3/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.3",
+    "notes_url": "/release-notes/v0.3.3/"
+  },
+  {
+    "version": "v0.3.1",
+    "published": "2026-03-30",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.1/vaultline_0.3.1_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.1/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.1",
+    "notes_url": "/release-notes/v0.3.1/"
+  },
+  {
+    "version": "v0.2.15",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.15/vaultline_0.2.15_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.15/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.15",
+    "notes_url": "/release-notes/v0.2.15/"
+  },
+  {
+    "version": "v0.2.14",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.14/vaultline_0.2.14_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.14/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.14",
+    "notes_url": "/release-notes/v0.2.14/"
+  },
+  {
+    "version": "v0.2.13",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.13/vaultline_0.2.13_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.13/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.13",
+    "notes_url": "/release-notes/v0.2.13/"
+  },
+  {
+    "version": "v0.2.12",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.12/vaultline_0.2.12_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.12/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.12",
+    "notes_url": "/release-notes/v0.2.12/"
+  },
+  {
+    "version": "v0.2.11",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.11/vaultline_0.2.11_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.11/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.11",
+    "notes_url": "/release-notes/v0.2.11/"
+  },
+  {
+    "version": "v0.2.10",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.10/vaultline_0.2.10_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.10/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.10",
+    "notes_url": "/release-notes/v0.2.10/"
+  },
+  {
+    "version": "v0.2.9",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.9/vaultline_0.2.9_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.9/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.9",
+    "notes_url": "/release-notes/v0.2.9/"
+  },
+  {
+    "version": "v0.2.8",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.8/vaultline_0.2.8_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.8/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.8",
+    "notes_url": "/release-notes/v0.2.8/"
+  },
+  {
+    "version": "v0.2.7",
+    "published": "2026-03-25",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.2.7/vaultline_0.2.7_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.2.7/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.2.7",
+    "notes_url": "/release-notes/v0.2.7/"
+  }
+]

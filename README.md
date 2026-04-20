@@ -79,3 +79,4 @@ vaultline/
 - The project site is a Jekyll build under `site-src/`.
 - Build static output with `./scripts/build-site.sh` (renders into `site/`).
 - Serve locally with `./scripts/ghpages-serve.sh`.
+- Add release-note snippets under `site-src/release-notes/unreleased/*.md`; `./scripts/prepare-release.sh` merges them into versioned notes and updates the Downloads page metadata.

@@ -5,57 +5,45 @@ title: Downloads
 
 # Downloads
 
-Latest known version from repository: **{{ site.vaultline_version }}**
+## Current (v{{ site.data.current.version }})
 
-<p class="muted">Release assets are loaded from GitHub Releases.</p>
+{% if site.data.current.changes and site.data.current.changes.size > 0 %}
+### Changes
+
+{% for item in site.data.current.changes %}
+- {{ item }}
+{% endfor %}
+{% else %}
+<p class="muted">No current release notes available.</p>
+{% endif %}
+
+## All releases
 
 <table>
   <thead>
     <tr>
       <th>Version</th>
       <th>Published</th>
-      <th>Artifacts</th>
+      <th>Debian package</th>
+      <th>Binary</th>
+      <th>GitHub release</th>
+      <th>Release Notes</th>
     </tr>
   </thead>
-  <tbody id="release-table">
-    <tr><td colspan="3" class="muted">Loading release metadata...</td></tr>
+  <tbody>
+    {% if site.data.releases and site.data.releases.size > 0 %}
+      {% for rel in site.data.releases %}
+      <tr>
+        <td>{{ rel.version }}</td>
+        <td>{{ rel.published }}</td>
+        <td><a href="{{ rel.deb_url }}">.deb</a></td>
+        <td><a href="{{ rel.binary_url }}">vaultline</a></td>
+        <td><a href="{{ rel.release_url }}">GitHub</a></td>
+        <td><a href="{{ rel.notes_url | relative_url }}">notes</a></td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr><td colspan="6" class="muted">No release entries yet. Run <code>./scripts/prepare-release.sh</code>.</td></tr>
+    {% endif %}
   </tbody>
 </table>
-
-<script>
-(() => {
-  const owner = {{ site.repo_owner | jsonify }};
-  const repo = {{ site.repo_name | jsonify }};
-  const tbody = document.getElementById('release-table');
-
-  function releaseRow(release) {
-    const assets = (release.assets || []).map(asset => {
-      return `<a href="${asset.browser_download_url}">${asset.name}</a>`;
-    }).join('<br>');
-
-    const published = new Date(release.published_at || release.created_at).toISOString().slice(0, 10);
-    return `<tr>
-      <td><a href="${release.html_url}">${release.tag_name}</a></td>
-      <td>${published}</td>
-      <td>${assets || '<span class="muted">no assets</span>'}</td>
-    </tr>`;
-  }
-
-  fetch(`https://api.github.com/repos/${owner}/${repo}/releases`)
-    .then(res => {
-      if (!res.ok) throw new Error(`GitHub API ${res.status}`);
-      return res.json();
-    })
-    .then(releases => {
-      if (!Array.isArray(releases) || releases.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="muted">No releases found.</td></tr>';
-        return;
-      }
-      tbody.innerHTML = releases.map(releaseRow).join('');
-    })
-    .catch(err => {
-      tbody.innerHTML = `<tr><td colspan="3" class="muted">Failed to load releases: ${err.message}</td></tr>`;
-    });
-})();
-</script>
-

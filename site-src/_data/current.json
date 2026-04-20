@@ -1,9 +1,9 @@
 {
-  "version": "0.3.35",
+  "version": "0.3.36",
   "changes": [
-    "Updated the site Quick Start to fully English wording and comments.",
-    "Removed daemon startup from Quick Start and clarified it is assumed to be running locally.",
-    "Renamed example store usage from `ai` to `mystore` throughout Quick Start commands.",
-    "Added a cross-store unseal example using `mystore` with `--from-secret`."
+    "Restructured documentation into focused pages (Daemon/API, CLI, Runbook, Developer ramp-up, Store model, Bitwarden).",
+    "Added MkDocs Material navigation and integrated docs into the site build/output.",
+    "Simplified README and RELEASING guidance to link canonical docs instead of duplicating long-form instructions.",
+    "Removed container-focused artifacts and references for now."
   ]
 }

@@ -5,12 +5,7 @@ title: Overview
 
 # vaultline
 
-`vaultline` is a local-first secret vault with a clear operational model:
-
-- sealed by default
-- explicit unseal flows
-- deterministic secret file layout
-- automation-friendly CLI + daemon API
+A gittable and automation friendly secret vault with multi store support, a local-only daemon and a convenient auto-completing CLI.
 
 ## Quick start
 

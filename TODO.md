@@ -19,3 +19,19 @@
 - Improve secret-name completion for the final segment.
   - Current tab-completion can stop before suggesting the last key segment (for example `ai:....id`).
   - Ensure `secret` completion suggests full leaf candidates, not only intermediate dotted prefixes.
+
+- Add a dedicated “gittable” security model section.
+  - Document clearly what is protected vs. still visible in Git history.
+  - Include a compact table: ciphertext protected, key names visible, file count visible, update frequency visible, value length class potentially inferable.
+
+- Add optional secret-payload padding mode.
+  - Reduce value-length leakage by writing padded ciphertext envelopes.
+  - Keep mode explicit and backwards-compatible (opt-in per store or global flag).
+
+- Evaluate optional key-name obfuscation mode.
+  - Support workflows where secret identifiers themselves are sensitive metadata.
+  - Preserve current human-readable key naming as default behavior.
+
+- Add GitOps/incident runbook addendum.
+  - Define operational policy for accidental pushes, key rotation, and emergency reseal/recovery.
+  - Add practical branch/PR hygiene recommendations for vaultline-managed repos.

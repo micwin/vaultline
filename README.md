@@ -1,6 +1,6 @@
 # vaultline
 
-vaultline is a local-first secret vault with explicit seal/unseal control, per-secret encrypted files, and a daemon + CLI model.
+A gittable and automation friendly secret vault with multi store support, a local-only daemon and a convenient auto-completing CLI.
 
 ## Quick start
 

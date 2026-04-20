@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Release Notes v0.3.32 · vaultline</title>
+  <title>Release Notes v0.3.41 · vaultline</title>
   <meta name="description" content="Secure, local-first secret storage with defined operational flows.">
   <link rel="stylesheet" href="/vaultline/assets/theme.css">
 </head>
@@ -18,15 +18,13 @@
     </nav>
   </header>
   <main class="shell panel">
-    <h1 id="release-notes-v0332">Release Notes v0.3.32</h1>
+    <h1 id="release-notes-v0341">Release Notes v0.3.41</h1>
 
 <h2 id="changes">Changes</h2>
 
 <ul>
-  <li>Added structured release metadata for Downloads (<code class="language-plaintext highlighter-rouge">current.json</code> and <code class="language-plaintext highlighter-rouge">releases.json</code>).</li>
-  <li>Added best-effort historical release notes for prior versions.</li>
-  <li>Updated release tooling to aggregate unreleased snippets into versioned notes.</li>
-  <li>Updated Downloads page with dedicated columns for deb, binary, GitHub release, and notes.</li>
+  <li>GitHub release publishing now uses the versioned release-notes content as release body text.</li>
+  <li>Release workflow strips Jekyll frontmatter and uploads a clean markdown body via <code class="language-plaintext highlighter-rouge">body_path</code>.</li>
 </ul>
 
   </main>

@@ -9,6 +9,7 @@ This runbook describes repository workflow and release operations.
 - [Release flow](#release-flow)
 - [Site/docs workflow](#sitedocs-workflow)
 - [Helper scripts](#helper-scripts)
+- [Operations references](#operations-references)
 - [Operational hardening checklist](#operational-hardening-checklist)
 - [Developer references](#developer-references)
 
@@ -74,13 +75,18 @@ Local serve:
 - `scripts/release.sh` — fast-forwards `release` from `develop` and pushes it to trigger CI release/publish.
 - `scripts/publish-release.sh` — push helper when already on `release`.
 
+## Operations references
+
+- Backup/restore procedure: [Backup & restore](backup-restore.md)
+
 ## Operational hardening checklist
 
 - Keep daemon listeners on loopback by default; only add remote binds deliberately.
 - Use allowlists for every non-loopback listener (`daemon allow ...`), and review them regularly.
 - Keep stores sealed by default and unseal only what is needed for the current task.
 - Prefer cross-store unseal material (`store unseal --from-secret`) over manual passphrase sharing.
-- Backup before broad writes/imports (`backup zip <store>`) and verify restore workflow periodically.
+- Backup before broad writes/imports and verify restore workflow periodically.
+  See: [Backup & restore](backup-restore.md).
 - Rotate sensitive passphrases/secrets on a regular cadence and after operator or host changes.
 - Restrict filesystem access to store/config paths (`~/.local/share/vaultline`, `~/.config/vaultline`).
 - After package upgrades/restarts, verify health and seal state explicitly (`vaultline health`).

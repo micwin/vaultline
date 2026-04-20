@@ -34,6 +34,8 @@ Most day-to-day vaultline operations are initiated through the CLI.
 - `restore ...` — restores full-store backups.
 - `completion ...` — prints shell completion scripts.
 
+Detailed backup/restore workflow is documented on [Backup & restore](backup-restore.md).
+
 ## Secret commands
 
 - `secret set <store:key> [--value|--file|--stdin] [--twice]` — create/update one secret.
@@ -82,5 +84,6 @@ CLI exits non-zero when daemon is unavailable, target store is sealed, or operat
 
 - [Daemon & API](daemon.md)
 - [Store model](store-model.md)
+- [Backup & restore](backup-restore.md)
 - [Bitwarden import](bitwarden.md)
 - [Runbook (Project Workflow)](runbook.md)

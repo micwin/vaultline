@@ -1,0 +1,2 @@
+this is intentionally not a zip archive
+used by smokey backup/restore negative-path tests

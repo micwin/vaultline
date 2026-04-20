@@ -14,6 +14,7 @@ This documentation complements the main release site and focuses on hands-on ope
 - Use [CLI](cli.md) for command usage and completion behavior.
 - Use [Daemon & API](daemon.md) for process behavior, service integration, and endpoint details.
 - Use [Store model](store-model.md) for multi-store semantics and storage layout.
+- Use [Backup & restore](backup-restore.md) for archive and recovery operations.
 - Use [Runbook (Project Workflow)](runbook.md) for release/versioning workflow and helper scripts.
 
 ## Typical flow
@@ -27,7 +28,7 @@ This documentation complements the main release site and focuses on hands-on ope
 4. **Execute secret lifecycle commands** (`secret set/get/list/glob/copy/move/delete`) as the primary operational interface.
    See: [CLI](cli.md#secret-commands).
 5. **Run backup/export and reseal workflow** before and after sensitive changes.
-   See: [CLI](cli.md) and [Runbook (Project Workflow)](runbook.md).
+   See: [Backup & restore](backup-restore.md) and [CLI](cli.md).
 
 ## Operational checklist
 
@@ -36,7 +37,7 @@ This documentation complements the main release site and focuses on hands-on ope
 - Unseal only the stores required for the current task.
   See: [Daemon & API](daemon.md#unseal-behavior).
 - Snapshot/backup before broad updates.
-  See: [CLI](cli.md).
+  See: [Backup & restore](backup-restore.md).
 - Perform secret changes via CLI commands.
   See: [CLI](cli.md#secret-commands).
 - Reseal stores according to your operating policy.

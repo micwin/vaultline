@@ -29,6 +29,7 @@ nav:
       - Store Model: store-model.md
   - Operations:
       - Daemon & API: daemon.md
+      - Backup & Restore: backup-restore.md
       - Runbook (Project Workflow): runbook.md
       - Bitwarden Import: bitwarden.md
   - Development:

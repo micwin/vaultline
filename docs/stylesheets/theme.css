@@ -44,6 +44,18 @@ body,
   display: none !important;
 }
 
+.md-header__home-link {
+  color: var(--vl-cyan-soft) !important;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  text-decoration: none;
+}
+
+.md-header__home-link:hover {
+  color: var(--vl-cyan) !important;
+}
+
 .md-nav__link:hover,
 .md-tabs__link:hover,
 .md-typeset a,

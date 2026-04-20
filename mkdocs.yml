@@ -8,6 +8,7 @@ docs_dir: docs
 
 theme:
   name: material
+  custom_dir: docs/overrides
   language: en
   features:
     - navigation.sections
@@ -21,6 +22,9 @@ theme:
 
 extra_css:
   - stylesheets/theme.css
+
+extra:
+  home_link: /vaultline/
 
 nav:
   - Overview: index.md

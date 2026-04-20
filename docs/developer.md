@@ -7,6 +7,7 @@ Developer onboarding for local work on vaultline.
 - [Prerequisites](#prerequisites)
 - [Initial setup](#initial-setup)
 - [Test workflow](#test-workflow)
+- [Build workflow](#build-workflow)
 - [Site/docs workflow](#sitedocs-workflow)
 - [Release handoff expectations](#release-handoff-expectations)
 
@@ -32,6 +33,34 @@ smokey --tests-dir tests.d
 ```
 
 Use focused package tests first, then full suite before release prep.
+
+## Build workflow
+
+Default build (compile + deb package):
+
+```bash
+./scripts/build.sh
+```
+
+Targeted builds:
+
+```bash
+./scripts/build.sh --compile
+./scripts/build.sh --deb
+./scripts/build.sh --site
+./scripts/build.sh --clean --deb --site
+```
+
+Version bump during build:
+
+```bash
+./scripts/build.sh --deb --version X.Y.Z
+```
+
+Release guardrail:
+
+- Do not bump versions directly on `release` branch.
+- Perform version bump and release prep on `develop` via `./scripts/prepare-release.sh <X.Y.Z>`.
 
 ## Site/docs workflow
 

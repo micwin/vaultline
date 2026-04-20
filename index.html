@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.33</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.34</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
@@ -30,10 +30,20 @@
 
 <h2 id="quick-start">Quick start</h2>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vaultline daemon <span class="nt">--addr</span> 127.0.0.1:8428 <span class="nt">--store-dir</span> ./store
-vaultline <span class="nt">--addr</span> 127.0.0.1:8428 store init ai ./stores/ai
-vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
-vaultline <span class="nt">--addr</span> 127.0.0.1:8428 secret get ai:token <span class="nt">--out</span> ./token.txt
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># Startet den lokalen Daemon (Default: 127.0.0.1:8428)</span>
+vaultline daemon <span class="nt">--store-dir</span> ./store
+
+<span class="c"># Legt einen zusätzlichen Store an und registriert ihn</span>
+vaultline store init ai ./stores/ai
+
+<span class="c"># Speichert ein Secret interaktiv (Eingabe wird nicht angezeigt)</span>
+vaultline secret <span class="nb">set </span>ai:token <span class="nt">--stdin</span>
+
+<span class="c"># Liest ein Secret in eine Datei</span>
+vaultline secret get ai:token <span class="nt">--out</span> ./token.txt
+
+<span class="c"># Cross-store-Unseal: Passphrase aus anderem Store lesen</span>
+vaultline store unseal ai <span class="nt">--from-secret</span> superstore:ai.unseal
 </code></pre></div></div>
 
 <h2 id="recent-operations-focus">Recent operations focus</h2>

@@ -1,8 +1,6 @@
 {
-  "version": "0.3.39",
+  "version": "0.3.40",
   "changes": [
-    "Added dedicated Backup & Restore documentation page and linked it from CLI/Overview/Runbook.",
-    "Added Smokey tests for invalid zip import/restore failure paths.",
-    "Added Smokey roundtrip coverage for `export zip` + `import zip` alias workflows."
+    "Added an explicit `Homepage` link in the docs header for direct navigation back to `/vaultline/`."
   ]
 }

@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://micwin.github.io/vaultline/docs/runbook/">
+        <link rel="canonical" href="https://micwin.github.io/vaultline/docs/backup-restore/">
       
       
-        <link rel="prev" href="../backup-restore/">
+        <link rel="prev" href="../daemon/">
       
       
-        <link rel="next" href="../bitwarden/">
+        <link rel="next" href="../runbook/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Runbook (Project Workflow) - vaultline docs</title>
+        <title>Backup & Restore - vaultline docs</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#runbook-project-workflow" class="md-skip">
+        <a href="#backup-restore" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Runbook (Project Workflow)
+              Backup & Restore
             
           </span>
         </div>
@@ -471,34 +471,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../backup-restore/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Backup & Restore
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -518,7 +490,7 @@
   <span class="md-ellipsis">
     
   
-    Runbook (Project Workflow)
+    Backup & Restore
   
 
     
@@ -536,7 +508,7 @@
   <span class="md-ellipsis">
     
   
-    Runbook (Project Workflow)
+    Backup & Restore
   
 
     
@@ -573,10 +545,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#development-cycle" class="md-nav__link">
+  <a href="#overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Development cycle
+        Overview
       
     </span>
   </a>
@@ -584,10 +556,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#versioning" class="md-nav__link">
+  <a href="#create-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Versioning
+        Create backups
       
     </span>
   </a>
@@ -595,10 +567,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#release-flow" class="md-nav__link">
+  <a href="#restore-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Release flow
+        Restore backups
       
     </span>
   </a>
@@ -606,10 +578,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sitedocs-workflow" class="md-nav__link">
+  <a href="#recommended-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Site/docs workflow
+        Recommended workflow
       
     </span>
   </a>
@@ -617,43 +589,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#helper-scripts" class="md-nav__link">
+  <a href="#failure-handling" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Helper scripts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operations-references" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operations references
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operational-hardening-checklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operational hardening checklist
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#developer-references" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Developer references
+        Failure handling
       
     </span>
   </a>
@@ -664,6 +603,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runbook/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runbook (Project Workflow)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -838,92 +805,50 @@
   
 
 
-<h1 id="runbook-project-workflow">Runbook (Project Workflow)</h1>
-<p>This runbook describes repository workflow and release operations.</p>
+<h1 id="backup-restore">Backup &amp; restore</h1>
+<p>Operational guidance for creating and restoring full-store archives.</p>
 <h2 id="table-of-contents">Table of contents</h2>
 <ul>
-<li><a href="#development-cycle">Development cycle</a></li>
-<li><a href="#versioning">Versioning</a></li>
-<li><a href="#release-flow">Release flow</a></li>
-<li><a href="#sitedocs-workflow">Site/docs workflow</a></li>
-<li><a href="#helper-scripts">Helper scripts</a></li>
-<li><a href="#operations-references">Operations references</a></li>
-<li><a href="#operational-hardening-checklist">Operational hardening checklist</a></li>
-<li><a href="#developer-references">Developer references</a></li>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#create-backups">Create backups</a></li>
+<li><a href="#restore-backups">Restore backups</a></li>
+<li><a href="#recommended-workflow">Recommended workflow</a></li>
+<li><a href="#failure-handling">Failure handling</a></li>
 </ul>
-<h2 id="development-cycle">Development cycle</h2>
-<ol>
-<li>Work on <code>develop</code>.</li>
-<li>Keep commits small and focused.</li>
-<li>Run tests/build locally before release prep.</li>
-</ol>
-<h2 id="versioning">Versioning</h2>
+<h2 id="overview">Overview</h2>
+<p>Vaultline provides two equivalent archive workflows:</p>
 <ul>
-<li>Version is stored in <code>pkg/version/version.go</code>.</li>
-<li>Release prep updates this version and produces artifacts.</li>
-<li>Version bump is automatic as part of <code>./scripts/prepare-release.sh &lt;X.Y.Z&gt;</code>.</li>
-<li>Do release prep on <code>develop</code>, not directly on <code>release</code>, to avoid branch/history confusion and accidental out-of-sequence version updates.</li>
+<li><code>backup zip &lt;store&gt; [zip-file]</code> / <code>restore zip &lt;zip-file&gt; &lt;store&gt; [--overwrite]</code></li>
+<li><code>export zip &lt;store&gt; [zip-file]</code> / <code>import zip &lt;zip-file&gt; &lt;store&gt;</code></li>
 </ul>
-<h2 id="release-flow">Release flow</h2>
-<ol>
-<li>Prepare release content and artifacts:</li>
-</ol>
-<p><code>bash
-   ./scripts/prepare-release.sh &lt;X.Y.Z&gt;</code></p>
-<ol>
-<li>Review and commit generated changes on <code>develop</code>.</li>
-<li>Push <code>develop</code>.</li>
-<li>Fast-forward/push <code>release</code>:</li>
-</ol>
-<p><code>bash
-   ./scripts/release.sh</code></p>
-<ol>
-<li>GitHub Actions builds <code>.deb</code> + binary, tags <code>vX.Y.Z</code>, publishes release, and deploys Pages.</li>
-</ol>
-<p>Practical guardrail:</p>
-<ul>
-<li>Avoid manual version edits on <code>release</code> branch; always flow through <code>develop -&gt; release</code>.</li>
-</ul>
-<h2 id="sitedocs-workflow">Site/docs workflow</h2>
-<ul>
-<li>Main site content: <code>site-src/</code> (Jekyll)</li>
-<li>Docs content: <code>docs/</code> (MkDocs Material)</li>
-</ul>
-<p>Local build:</p>
-<pre><code class="language-bash">./scripts/build-site.sh
+<p><code>backup/restore</code> are the preferred operator-facing names for runbooks.</p>
+<h2 id="create-backups">Create backups</h2>
+<p>Create archive with explicit filename:</p>
+<pre><code class="language-bash">vaultline backup zip mystore ./mystore-backup.zip
 </code></pre>
-<p>Local serve:</p>
-<pre><code class="language-bash">./scripts/serve-site.sh
+<p>Create archive with auto filename (<code>&lt;store&gt;-YYYY-MM-DD.zip</code>):</p>
+<pre><code class="language-bash">vaultline backup zip mystore
 </code></pre>
-<h2 id="helper-scripts">Helper scripts</h2>
+<h2 id="restore-backups">Restore backups</h2>
+<p>Restore into store name:</p>
+<pre><code class="language-bash">vaultline restore zip ./mystore-backup.zip mystore
+</code></pre>
+<p>Overwrite existing target store explicitly:</p>
+<pre><code class="language-bash">vaultline restore zip ./mystore-backup.zip mystore --overwrite
+</code></pre>
+<h2 id="recommended-workflow">Recommended workflow</h2>
+<ol>
+<li>Seal/non-critical write pause for target store if possible.</li>
+<li>Create backup before broad writes/imports.</li>
+<li>Verify backup file integrity and storage location.</li>
+<li>Test restore procedure periodically on a non-production store.</li>
+<li>Keep at least one known-good archive outside the primary host.</li>
+</ol>
+<h2 id="failure-handling">Failure handling</h2>
 <ul>
-<li><code>scripts/build.sh</code> — central orchestrator for compile/package/site tasks.</li>
-<li><code>scripts/build-site.sh</code> — builds static site output (<code>site/</code>) from Jekyll (<code>site-src/</code>) and MkDocs (<code>docs/</code>).</li>
-<li><code>scripts/serve-site.sh</code> — convenience wrapper to build then serve locally.</li>
-<li><code>scripts/ghpages-serve.sh</code> — static HTTP server for already-built output, including <code>/vaultline/docs/</code>.</li>
-<li><code>scripts/prepare-release.sh</code> — bumps to target version, builds artifacts, merges unreleased notes into versioned notes, updates downloads metadata.</li>
-<li><code>scripts/release.sh</code> — fast-forwards <code>release</code> from <code>develop</code> and pushes it to trigger CI release/publish.</li>
-<li><code>scripts/publish-release.sh</code> — push helper when already on <code>release</code>.</li>
-</ul>
-<h2 id="operations-references">Operations references</h2>
-<ul>
-<li>Backup/restore procedure: <a href="../backup-restore/">Backup &amp; restore</a></li>
-</ul>
-<h2 id="operational-hardening-checklist">Operational hardening checklist</h2>
-<ul>
-<li>Keep daemon listeners on loopback by default; only add remote binds deliberately.</li>
-<li>Use allowlists for every non-loopback listener (<code>daemon allow ...</code>), and review them regularly.</li>
-<li>Keep stores sealed by default and unseal only what is needed for the current task.</li>
-<li>Prefer cross-store unseal material (<code>store unseal --from-secret</code>) over manual passphrase sharing.</li>
-<li>Backup before broad writes/imports and verify restore workflow periodically.
-  See: <a href="../backup-restore/">Backup &amp; restore</a>.</li>
-<li>Rotate sensitive passphrases/secrets on a regular cadence and after operator or host changes.</li>
-<li>Restrict filesystem access to store/config paths (<code>~/.local/share/vaultline</code>, <code>~/.config/vaultline</code>).</li>
-<li>After package upgrades/restarts, verify health and seal state explicitly (<code>vaultline health</code>).</li>
-</ul>
-<h2 id="developer-references">Developer references</h2>
-<ul>
-<li><a href="../developer/">Developer ramp-up</a></li>
+<li>If restore fails midway, inspect daemon logs and store status first.</li>
+<li>Re-run restore only with explicit <code>--overwrite</code> when replacement is intended.</li>
+<li>Keep previous backup archive until post-restore verification is complete.</li>
 </ul>
 
 

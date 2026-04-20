@@ -572,6 +572,34 @@
   
   
     <li class="md-nav__item">
+      <a href="backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup & Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="runbook/" class="md-nav__link">
         
   
@@ -776,6 +804,7 @@
 <li>Use <a href="cli/">CLI</a> for command usage and completion behavior.</li>
 <li>Use <a href="daemon/">Daemon &amp; API</a> for process behavior, service integration, and endpoint details.</li>
 <li>Use <a href="store-model/">Store model</a> for multi-store semantics and storage layout.</li>
+<li>Use <a href="backup-restore/">Backup &amp; restore</a> for archive and recovery operations.</li>
 <li>Use <a href="runbook/">Runbook (Project Workflow)</a> for release/versioning workflow and helper scripts.</li>
 </ul>
 <h2 id="typical-flow">Typical flow</h2>
@@ -789,7 +818,7 @@
 <li><strong>Execute secret lifecycle commands</strong> (<code>secret set/get/list/glob/copy/move/delete</code>) as the primary operational interface.
    See: <a href="cli/#secret-commands">CLI</a>.</li>
 <li><strong>Run backup/export and reseal workflow</strong> before and after sensitive changes.
-   See: <a href="cli/">CLI</a> and <a href="runbook/">Runbook (Project Workflow)</a>.</li>
+   See: <a href="backup-restore/">Backup &amp; restore</a> and <a href="cli/">CLI</a>.</li>
 </ol>
 <h2 id="operational-checklist">Operational checklist</h2>
 <ul>
@@ -798,7 +827,7 @@
 <li>Unseal only the stores required for the current task.
   See: <a href="daemon/#unseal-behavior">Daemon &amp; API</a>.</li>
 <li>Snapshot/backup before broad updates.
-  See: <a href="cli/">CLI</a>.</li>
+  See: <a href="backup-restore/">Backup &amp; restore</a>.</li>
 <li>Perform secret changes via CLI commands.
   See: <a href="cli/#secret-commands">CLI</a>.</li>
 <li>Reseal stores according to your operating policy.

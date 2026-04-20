@@ -1,0 +1,3 @@
+- Updated the site Quick Start to use default local daemon addressing (no explicit `--addr`).
+- Added short explanatory comments for each Quick Start command.
+- Added a cross-store unseal example using `store unseal --from-secret`.

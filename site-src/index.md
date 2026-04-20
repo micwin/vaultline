@@ -15,10 +15,20 @@ title: Overview
 ## Quick start
 
 ```bash
-vaultline daemon --addr 127.0.0.1:8428 --store-dir ./store
-vaultline --addr 127.0.0.1:8428 store init ai ./stores/ai
-vaultline --addr 127.0.0.1:8428 secret set ai:token --stdin
-vaultline --addr 127.0.0.1:8428 secret get ai:token --out ./token.txt
+# Startet den lokalen Daemon (Default: 127.0.0.1:8428)
+vaultline daemon --store-dir ./store
+
+# Legt einen zusätzlichen Store an und registriert ihn
+vaultline store init ai ./stores/ai
+
+# Speichert ein Secret interaktiv (Eingabe wird nicht angezeigt)
+vaultline secret set ai:token --stdin
+
+# Liest ein Secret in eine Datei
+vaultline secret get ai:token --out ./token.txt
+
+# Cross-store-Unseal: Passphrase aus anderem Store lesen
+vaultline store unseal ai --from-secret superstore:ai.unseal
 ```
 
 ## Recent operations focus

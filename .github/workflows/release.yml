@@ -60,11 +60,36 @@ jobs:
             git push origin "v${VERSION}"
           fi
 
+      - name: Prepare release notes body
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          NOTES_SOURCE="site-src/release-notes/v${VERSION}.md"
+          NOTES_OUT="dist/release-notes.md"
+          if [[ ! -f "${NOTES_SOURCE}" ]]; then
+            echo "Release notes file not found: ${NOTES_SOURCE}" >&2
+            exit 1
+          fi
+
+          # Strip optional Jekyll frontmatter and write a plain markdown body.
+          awk '
+            BEGIN { in_frontmatter = 0; frontmatter_done = 0 }
+            NR == 1 && $0 == "---" { in_frontmatter = 1; next }
+            in_frontmatter && $0 == "---" { in_frontmatter = 0; frontmatter_done = 1; next }
+            !in_frontmatter { print }
+          ' "${NOTES_SOURCE}" > "${NOTES_OUT}"
+
+          if [[ ! -s "${NOTES_OUT}" ]]; then
+            echo "Prepared release notes are empty" >&2
+            exit 1
+          fi
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.vars.outputs.version }}
           name: vaultline v${{ steps.vars.outputs.version }}
+          body_path: dist/release-notes.md
           files: |
             dist/vaultline_${{ steps.vars.outputs.version }}_amd64.deb
             dist/vaultline

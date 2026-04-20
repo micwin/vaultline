@@ -22,6 +22,7 @@
 ## Shell completion
 - `vaultline completion bash` — prints a bash completion script
 - `vaultline completion zsh` — prints a zsh completion script
+- the generated completion hooks both `vaultline` and `vl`
 - completion is dynamic for:
   - configured store names
   - configured daemon bind addresses

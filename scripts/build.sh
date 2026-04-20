@@ -113,6 +113,7 @@ if [[ "${DO_DEB}" -eq 1 ]]; then
   rm -rf "${PKG_DIR}"
   mkdir -p "${PKG_DIR}/usr/local/bin" "${PKG_DIR}/usr/lib/systemd/system" "${PKG_DIR}/usr/share/doc/vaultline" "${PKG_DIR}/DEBIAN"
   cp "${DIST_DIR}/vaultline" "${PKG_DIR}/usr/local/bin/vaultline"
+  ln -s vaultline "${PKG_DIR}/usr/local/bin/vl"
   cp "${ROOT_DIR}/systemd/vaultline@.service" "${PKG_DIR}/usr/lib/systemd/system/vaultline@.service"
   cp "${ROOT_DIR}/README.md" "${PKG_DIR}/usr/share/doc/vaultline/README"
   cp "${ROOT_DIR}/debian/postinst" "${PKG_DIR}/DEBIAN/postinst"

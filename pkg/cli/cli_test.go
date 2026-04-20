@@ -19,6 +19,7 @@ import (
 	"github.com/micwin/vaultline/internal/daemoncfg"
 	"github.com/micwin/vaultline/pkg/api"
 	"github.com/micwin/vaultline/pkg/stores"
+	"github.com/micwin/vaultline/pkg/version"
 )
 
 func TestParseQualifiedKey(t *testing.T) {
@@ -79,6 +80,37 @@ func TestDaemonBindHelpShowsSubcommandUsage(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "vaultline daemon bind <addr>") {
 		t.Fatalf("unexpected help output: %s", out.String())
+	}
+}
+
+func TestVersionCommandPrintsRawVersion(t *testing.T) {
+	var out bytes.Buffer
+	if err := Run([]string{"version"}, &out); err != nil {
+		t.Fatalf("run version: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != version.Version {
+		t.Fatalf("unexpected version output: %q", got)
+	}
+}
+
+func TestLongVersionFlagPrintsRawVersion(t *testing.T) {
+	var out bytes.Buffer
+	if err := Run([]string{"--version"}, &out); err != nil {
+		t.Fatalf("run --version: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != version.Version {
+		t.Fatalf("unexpected --version output: %q", got)
+	}
+}
+
+func TestUnknownCommandPrintsUsage(t *testing.T) {
+	var out bytes.Buffer
+	err := Run([]string{"definitely-unknown"}, &out)
+	if err == nil {
+		t.Fatalf("expected unknown command error")
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("expected usage output for unknown command, got: %s", out.String())
 	}
 }
 
@@ -155,6 +187,26 @@ func TestCompleteStoreCommandsSuggestConfiguredStores(t *testing.T) {
 	}
 }
 
+func TestStoreUnsealFromSecretCompletionSuggestsStorePrefixes(t *testing.T) {
+	orig := listConfiguredStoresFn
+	listConfiguredStoresFn = func(includeLocal bool) []string {
+		return []string{"default", "project-a", "superstore"}
+	}
+	t.Cleanup(func() { listConfiguredStoresFn = orig })
+
+	suggestions := completeWords([]string{"store", "unseal", "ai", "--from-secret"}, "su")
+	found := false
+	for _, item := range suggestions {
+		if item == "superstore:" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected store prefix completion for --from-secret: %#v", suggestions)
+	}
+}
+
 func TestCompleteDaemonCommandsSuggestBindsAndAllows(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmp)
@@ -184,6 +236,15 @@ func TestCompletionScriptsMentionHiddenCompleteCommand(t *testing.T) {
 	}
 	if !strings.Contains(zshCompletionScript(), "__complete") {
 		t.Fatalf("zsh completion script missing hidden completion hook")
+	}
+	if !strings.Contains(bashCompletionScript(), "vaultline vl") {
+		t.Fatalf("bash completion script should register both vaultline and vl")
+	}
+	if !strings.Contains(zshCompletionScript(), "compdef _vaultline_complete vaultline vl") {
+		t.Fatalf("zsh completion script should register both vaultline and vl")
+	}
+	if !strings.Contains(zshCompletionScript(), "${words[1]} __complete") {
+		t.Fatalf("zsh completion script should invoke the active command name")
 	}
 }
 

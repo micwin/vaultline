@@ -1,0 +1,5 @@
+- Added `vl` Debian package alias (`/usr/local/bin/vl -> vaultline`) for shorter CLI usage.
+- Added completion support for both `vaultline` and `vl`, including `store unseal --from-secret` cross-store completion flow.
+- Added top-level `version` command and aligned `--version` to print only the raw version string.
+- Improved unknown-command UX by printing usage alongside the error.
+- Updated docs quick-start examples to use the installed `vaultline` binary instead of `go run`.

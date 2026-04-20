@@ -15,10 +15,10 @@ title: Overview
 ## Quick start
 
 ```bash
-go run ./cmd/vaultline daemon --addr 127.0.0.1:8428 --store-dir ./store
-go run ./cmd/vaultline --addr 127.0.0.1:8428 store init ai ./stores/ai
-go run ./cmd/vaultline --addr 127.0.0.1:8428 secret set ai:token --stdin
-go run ./cmd/vaultline --addr 127.0.0.1:8428 secret get ai:token --out ./token.txt
+vaultline daemon --addr 127.0.0.1:8428 --store-dir ./store
+vaultline --addr 127.0.0.1:8428 store init ai ./stores/ai
+vaultline --addr 127.0.0.1:8428 secret set ai:token --stdin
+vaultline --addr 127.0.0.1:8428 secret get ai:token --out ./token.txt
 ```
 
 ## Recent operations focus
@@ -31,4 +31,3 @@ go run ./cmd/vaultline --addr 127.0.0.1:8428 secret get ai:token --out ./token.t
 
 - use [Downloads]({{ '/downloads/' | relative_url }}) for release artifacts
 - use `RELEASING.md` in repo root for release flow
-

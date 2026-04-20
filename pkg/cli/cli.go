@@ -66,6 +66,7 @@ func usageText() string {
       Archive and restore full sealed stores.
 
   vaultline [--addr HOST:PORT] <command> [flags]
+      version                    Print version only
       health                     Check daemon status
       seal                       Reseal the default store
       daemon-stop                Ask the daemon to shut down
@@ -303,6 +304,10 @@ func isHelpArg(arg string) bool {
 
 // Run executes the CLI subcommands.
 func Run(args []string, out io.Writer) error {
+	if len(args) == 1 && (args[0] == "version" || args[0] == "--version") {
+		fmt.Fprintln(out, version.Version)
+		return nil
+	}
 	if len(args) == 1 && isHelpArg(args[0]) {
 		fmt.Fprint(out, usageText())
 		return nil
@@ -335,6 +340,9 @@ func Run(args []string, out io.Writer) error {
 	switch remaining[0] {
 	case "__complete":
 		return runComplete(remaining[1:], out)
+	case "version":
+		fmt.Fprintln(out, version.Version)
+		return nil
 	case "health":
 		return runHealth(baseURL, *output, out)
 	case "seal":
@@ -358,6 +366,7 @@ func Run(args []string, out io.Writer) error {
 	case "secret":
 		return runSecret(baseURL, remaining[1:], *output, out)
 	default:
+		fs.Usage()
 		return fmt.Errorf("unknown command %q", remaining[0])
 	}
 }
@@ -1289,12 +1298,12 @@ _vaultline_complete() {
     fi
   fi
 }
-complete -o default -F _vaultline_complete vaultline
+complete -o default -F _vaultline_complete vaultline vl
 `
 }
 
 func zshCompletionScript() string {
-	return `#compdef vaultline
+	return `#compdef vaultline vl
 _vaultline_complete() {
   local cur
   cur="${words[CURRENT]}"
@@ -1305,7 +1314,7 @@ _vaultline_complete() {
     prev=()
   fi
   local -a suggestions
-  suggestions=("${(@f)$(vaultline __complete "$cur" "${prev[@]}" 2>/dev/null)}")
+  suggestions=("${(@f)$(${words[1]} __complete "$cur" "${prev[@]}" 2>/dev/null)}")
   if (( ${#suggestions[@]} )); then
     local nospace=0
     local item
@@ -1324,13 +1333,13 @@ _vaultline_complete() {
     _files
   fi
 }
-compdef _vaultline_complete vaultline
+compdef _vaultline_complete vaultline vl
 `
 }
 
 func completeWords(words []string, current string) []string {
 	if len(words) == 0 {
-		return filterCompletions([]string{"health", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
+		return filterCompletions([]string{"version", "health", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
 	}
 	switch words[0] {
 	case "completion":
@@ -1448,6 +1457,15 @@ func completeStoreWords(words []string, current string) []string {
 		return filterCompletions([]string{"--prompt-passphrase", "--remember-passphrase", "--help"}, current)
 	}
 	if sub == "unseal" {
+		if len(words) >= 2 && words[len(words)-1] == "--from-secret" {
+			if !strings.Contains(current, ":") {
+				return filterCompletions(listStorePrefixes(), current)
+			}
+			return completeQualifiedSecret(current)
+		}
+		if strings.Contains(current, ":") {
+			return completeQualifiedSecret(current)
+		}
 		return filterCompletions(append(storeNames, "--prompt-passphrase", "--remember-passphrase", "--transient", "--from-secret", "--help"), current)
 	}
 	if sub == "seal" && len(words) >= 2 {
@@ -1529,6 +1547,9 @@ func completeSecretWords(words []string, current string) []string {
 }
 
 func completeQualifiedSecret(current string) []string {
+	if strings.TrimSpace(current) == "" {
+		return listStorePrefixes()
+	}
 	storeName, _, err := parseQualifiedKey(current)
 	if err != nil {
 		if strings.HasSuffix(current, ":") {
@@ -2211,7 +2232,7 @@ func parseQualifiedKey(input string) (string, string, error) {
 		return stores.DefaultStoreName, parts[0], nil
 	}
 	if parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("qualified keys must look like store:key")
+		return "", "", fmt.Errorf("qualified keys must look like store:key (store and key are both required)")
 	}
 	return parts[0], parts[1], nil
 }

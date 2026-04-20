@@ -15,3 +15,7 @@
   - Allow core secret/store operations directly against local store/config paths.
   - Keep command behavior as close as possible to daemon-backed mode.
   - Document trade-offs (concurrency, locking, and remote access limitations).
+
+- Improve secret-name completion for the final segment.
+  - Current tab-completion can stop before suggesting the last key segment (for example `ai:....id`).
+  - Ensure `secret` completion suggests full leaf candidates, not only intermediate dotted prefixes.

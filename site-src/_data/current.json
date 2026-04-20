@@ -1,7 +1,8 @@
 {
-  "version": "0.3.38",
+  "version": "0.3.39",
   "changes": [
-    "Strengthened docs wording around the \u201cgittable\u201d model and clarified metadata trade-offs.",
-    "Added concrete hardening follow-up items to TODO tracking."
+    "Added dedicated Backup & Restore documentation page and linked it from CLI/Overview/Runbook.",
+    "Added Smokey tests for invalid zip import/restore failure paths.",
+    "Added Smokey roundtrip coverage for `export zip` + `import zip` alias workflows."
   ]
 }

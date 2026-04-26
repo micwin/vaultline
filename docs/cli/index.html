@@ -792,6 +792,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#secret-to-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secret to environment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diagnostics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -857,7 +868,7 @@
 <h2 id="global-flags">Global flags</h2>
 <ul>
 <li><code>--addr 127.0.0.1:8428</code> — daemon address (default loopback)</li>
-<li><code>--output json|text|raw</code> — output format for supported commands</li>
+<li><code>--output json|text|raw|eval-export|eval-set</code> — output format (eval-* applies to <code>secret get</code>)</li>
 </ul>
 <h2 id="top-level-commands">Top-level commands</h2>
 <ul>
@@ -879,7 +890,7 @@
 <h2 id="secret-commands">Secret commands</h2>
 <ul>
 <li><code>secret set &lt;store:key&gt; [--value|--file|--stdin] [--twice]</code> — create/update one secret.</li>
-<li><code>secret get &lt;store:key&gt; [--out path] [--output raw|json]</code> — read one secret.</li>
+<li><code>secret get &lt;store:key&gt; [VAR] [--out path] [--output text|raw|json|eval-export|eval-set]</code> — read one secret.</li>
 <li><code>secret delete &lt;store:key&gt;</code> — delete one secret.</li>
 <li><code>secret list [store:] [--output json] [--raw]</code> — list store keys.</li>
 <li><code>secret glob &lt;store-glob:key-glob&gt; [--raw]</code> — search keys by wildcard.</li>
@@ -912,6 +923,16 @@
 <li><code>vaultline completion zsh</code> — emits zsh completion.</li>
 </ul>
 <p>Completion supports both <code>vaultline</code> and <code>vl</code>, including dynamic suggestions for stores, listener addresses, allow rules, and qualified keys.</p>
+<h2 id="secret-to-environment">Secret to environment</h2>
+<p>For shell usage, <code>secret get</code> can emit shell code for <code>eval</code>:</p>
+<pre><code class="language-bash">eval &quot;$(vaultline --output eval-export secret get mystore:token TOKEN)&quot;
+eval &quot;$(vaultline --output eval-set secret get mystore:token TOKEN)&quot;
+</code></pre>
+<ul>
+<li><code>--output eval-export</code> prints <code>VAR='...'; export VAR;</code> (ssh-agent style).</li>
+<li><code>--output eval-set</code> prints <code>VAR='...';</code> without export.</li>
+<li>In both eval modes, <code>VAR</code> is required as positional argument.</li>
+</ul>
 <h2 id="diagnostics">Diagnostics</h2>
 <ul>
 <li><code>vaultline health</code></li>

@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="shell chrome">
-    <div class="brand">vaultline <span class="version">v0.3.41</span></div>
+    <div class="brand">vaultline <span class="version">v0.3.42</span></div>
     <nav>
       <a href="/vaultline/">Overview</a>
       <a href="/vaultline/downloads/">Downloads</a>
@@ -32,6 +32,9 @@ vaultline secret <span class="nb">set </span>mystore:token <span class="nt">--st
 
 <span class="c"># Read a secret into a file</span>
 vaultline secret get mystore:token <span class="nt">--out</span> ./token.txt
+
+<span class="c"># Export a secret into current shell context</span>
+<span class="nb">eval</span> <span class="s2">"</span><span class="si">$(</span>vaultline <span class="nt">--output</span> eval-export secret get mystore:token MYSTORE_TOKEN<span class="si">)</span><span class="s2">"</span>
 
 <span class="c"># Cross-store unseal: read unseal material from another store</span>
 vaultline store unseal mystore <span class="nt">--from-secret</span> superstore:mystore.unseal

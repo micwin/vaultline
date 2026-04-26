@@ -9,6 +9,7 @@ vaultline daemon --store-dir ./store
 vaultline store init mystore ./stores/mystore
 vaultline secret set mystore:token --stdin
 vaultline secret get mystore:token --out ./token.txt
+eval "$(vaultline --output eval-export secret get mystore:token MYSTORE_TOKEN)"
 ```
 
 ## Documentation map

@@ -1,7 +1,7 @@
 {
-  "version": "0.3.41",
+  "version": "0.3.42",
   "changes": [
-    "GitHub release publishing now uses the versioned release-notes content as release body text.",
-    "Release workflow strips Jekyll frontmatter and uploads a clean markdown body via `body_path`."
+    "Add `secret get --output eval-export|eval-set` so secrets can be emitted as shell assignments using a positional variable name.",
+    "Document and test eval output in the CLI quickstart, CLI reference, and smokey suite."
   ]
 }

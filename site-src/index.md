@@ -19,6 +19,9 @@ vaultline secret set mystore:token --stdin
 # Read a secret into a file
 vaultline secret get mystore:token --out ./token.txt
 
+# Export a secret into current shell context
+eval "$(vaultline --output eval-export secret get mystore:token MYSTORE_TOKEN)"
+
 # Cross-store unseal: read unseal material from another store
 vaultline store unseal mystore --from-secret superstore:mystore.unseal
 ```

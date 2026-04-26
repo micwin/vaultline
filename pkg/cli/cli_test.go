@@ -103,6 +103,58 @@ func TestLongVersionFlagPrintsRawVersion(t *testing.T) {
 	}
 }
 
+func TestSecretGetEnvAssignmentAndExport(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/stores/default/secrets/env.demo" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("alpha 'beta' gamma")), Version: "v1"})
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "eval-set", &out); err != nil {
+		t.Fatalf("secretGet env: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != `TOKEN='alpha '\''beta'\'' gamma'` {
+		t.Fatalf("unexpected env assignment: %q", got)
+	}
+
+	out.Reset()
+	if err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "eval-export", &out); err != nil {
+		t.Fatalf("secretGet env export: %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != `TOKEN='alpha '\''beta'\'' gamma'; export TOKEN;` {
+		t.Fatalf("unexpected env export assignment: %q", got)
+	}
+}
+
+func TestSecretGetEnvRejectsUnexpectedVarOutsideEvalMode(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("ok")), Version: "v1"})
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "json", &out)
+	if err == nil || !strings.Contains(err.Error(), "VAR is only valid") {
+		t.Fatalf("expected json/output conflict, got %v", err)
+	}
+}
+
+func TestSecretGetEvalRequiresVariable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("ok")), Version: "v1"})
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	err := secretGet(server.URL, []string{"default:env.demo"}, "eval-set", &out)
+	if err == nil || !strings.Contains(err.Error(), "requires exactly one VAR argument") {
+		t.Fatalf("expected missing VAR error, got %v", err)
+	}
+}
+
 func TestUnknownCommandPrintsUsage(t *testing.T) {
 	var out bytes.Buffer
 	err := Run([]string{"definitely-unknown"}, &out)
@@ -184,6 +236,16 @@ func TestCompleteStoreCommandsSuggestConfiguredStores(t *testing.T) {
 	}
 	if !foundFromSecret {
 		t.Fatalf("expected --from-secret in unseal completions: %#v", unsealFlagSuggestions)
+	}
+
+	outputModeSuggestions := completeWords([]string{"secret", "get", "default:env.demo", "--output"}, "eval")
+	if len(outputModeSuggestions) != 2 || outputModeSuggestions[0] != "eval-export" || outputModeSuggestions[1] != "eval-set" {
+		t.Fatalf("unexpected output suggestions for prefix eval: %#v", outputModeSuggestions)
+	}
+
+	outputModeAll := completeWords([]string{"secret", "get", "default:env.demo", "--output"}, "")
+	if len(outputModeAll) != 5 || outputModeAll[0] != "eval-export" || outputModeAll[1] != "eval-set" || outputModeAll[2] != "json" || outputModeAll[3] != "raw" || outputModeAll[4] != "text" {
+		t.Fatalf("unexpected full output suggestions: %#v", outputModeAll)
 	}
 }
 

@@ -16,7 +16,7 @@ Most day-to-day vaultline operations are initiated through the CLI.
 ## Global flags
 
 - `--addr 127.0.0.1:8428` — daemon address (default loopback)
-- `--output json|text|raw` — output format for supported commands
+- `--output json|text|raw|eval-export|eval-set` — output format (eval-* applies to `secret get`)
 
 ## Top-level commands
 
@@ -39,7 +39,7 @@ Detailed backup/restore workflow is documented on [Backup & restore](backup-rest
 ## Secret commands
 
 - `secret set <store:key> [--value|--file|--stdin] [--twice]` — create/update one secret.
-- `secret get <store:key> [--out path] [--output raw|json]` — read one secret.
+- `secret get <store:key> [VAR] [--out path] [--output text|raw|json|eval-export|eval-set]` — read one secret.
 - `secret delete <store:key>` — delete one secret.
 - `secret list [store:] [--output json] [--raw]` — list store keys.
 - `secret glob <store-glob:key-glob> [--raw]` — search keys by wildcard.
@@ -72,6 +72,19 @@ Detailed backup/restore workflow is documented on [Backup & restore](backup-rest
 - `vaultline completion zsh` — emits zsh completion.
 
 Completion supports both `vaultline` and `vl`, including dynamic suggestions for stores, listener addresses, allow rules, and qualified keys.
+
+## Secret to environment
+
+For shell usage, `secret get` can emit shell code for `eval`:
+
+```bash
+eval "$(vaultline --output eval-export secret get mystore:token TOKEN)"
+eval "$(vaultline --output eval-set secret get mystore:token TOKEN)"
+```
+
+- `--output eval-export` prints `VAR='...'; export VAR;` (ssh-agent style).
+- `--output eval-set` prints `VAR='...';` without export.
+- In both eval modes, `VAR` is required as positional argument.
 
 ## Diagnostics
 

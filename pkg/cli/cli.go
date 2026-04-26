@@ -33,6 +33,7 @@ import (
 var httpClient = &http.Client{Timeout: 10 * time.Second}
 var execCommand = exec.Command
 var importKeyPattern = regexp.MustCompile(`^[\p{Ll}\p{Nd}@.-]+$`)
+var envVarPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var listConfiguredStoresFn = listConfiguredStores
 
 func usageText() string {
@@ -239,7 +240,7 @@ func daemonSubcommandHelp(name string) string {
 func secretUsageText() string {
 	return `Usage:
   vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]
-  vaultline secret get <store:key> [--out PATH] [--output raw|json]
+  vaultline secret get <store:key> [VAR] [--out PATH] [--output text|raw|json|eval-export|eval-set]
   vaultline secret delete <store:key>
   vaultline secret copy [oldstore:]oldname [newstore:]newname [--force]
   vaultline secret move [oldstore:]oldname [newstore:]newname [--force]
@@ -280,7 +281,7 @@ func secretSubcommandHelp(name string) string {
 	case "set":
 		return "Usage:\n  vaultline secret set <store:key> [--value VALUE|--file PATH|--stdin] [--twice]\n\nStore or overwrite a secret in the selected store. `--twice` requires interactive `--stdin` and asks for the secret twice."
 	case "get":
-		return "Usage:\n  vaultline secret get <store:key> [--out PATH] [--output raw|json]\n\nFetch a secret from the selected store."
+		return "Usage:\n  vaultline secret get <store:key> [VAR] [--out PATH] [--output text|raw|json|eval-export|eval-set]\n\nFetch a secret from the selected store. In eval-* output modes, VAR is required and used as shell variable name."
 	case "delete":
 		return "Usage:\n  vaultline secret delete <store:key>\n\nDelete a secret from the selected store."
 	case "copy":
@@ -314,7 +315,7 @@ func Run(args []string, out io.Writer) error {
 	}
 	fs := flag.NewFlagSet("vaultline", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8428", "vaultline address")
-	output := fs.String("output", "text", "output format (text|json|raw for secret get)")
+	output := fs.String("output", "text", "output format (text|json|raw|eval-export|eval-set for secret get)")
 	fs.Usage = func() {
 		fmt.Fprint(out, usageText())
 	}
@@ -1341,6 +1342,9 @@ func completeWords(words []string, current string) []string {
 	if len(words) == 0 {
 		return filterCompletions([]string{"version", "health", "seal", "daemon-stop", "daemon", "store", "secret", "import", "export", "backup", "restore", "completion", "--addr", "--output", "--help"}, current)
 	}
+	if len(words) > 0 && words[len(words)-1] == "--output" {
+		return filterCompletions([]string{"text", "json", "raw", "eval-export", "eval-set"}, current)
+	}
 	switch words[0] {
 	case "completion":
 		return filterCompletions([]string{"bash", "zsh"}, current)
@@ -2330,15 +2334,21 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return err
 	}
 	key := strings.TrimSpace(*name)
+	remainingArgs := fs.Args()
+	keyFromPositional := false
 	if key == "" {
 		switch {
 		case keyArg != "":
 			key = keyArg
-		case fs.NArg() > 0:
-			key = fs.Arg(0)
+		case len(remainingArgs) > 0:
+			key = remainingArgs[0]
+			keyFromPositional = true
 		default:
 			return fmt.Errorf("provide a key via --name or as an argument")
 		}
+	}
+	if keyFromPositional {
+		remainingArgs = remainingArgs[1:]
 	}
 	storeName, key, err := parseQualifiedKey(key)
 	if err != nil {
@@ -2361,6 +2371,34 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 	if err != nil {
 		return err
 	}
+	evalMode := outputFmt == "eval-export" || outputFmt == "eval-set"
+	if evalMode {
+		if *outputPath != "" && *outputPath != "-" {
+			return fmt.Errorf("--out cannot be combined with --output %s", outputFmt)
+		}
+		if len(remainingArgs) != 1 {
+			return fmt.Errorf("--output %s requires exactly one VAR argument", outputFmt)
+		}
+		evalVar := remainingArgs[0]
+		if !envVarPattern.MatchString(evalVar) {
+			return fmt.Errorf("invalid variable name %q", evalVar)
+		}
+		if bytes.Contains(bytesValue, []byte{0}) {
+			return fmt.Errorf("secret contains NUL byte and cannot be represented as shell env assignment")
+		}
+		assignment := fmt.Sprintf("%s=%s", evalVar, shellSingleQuote(string(bytesValue)))
+		if outputFmt == "eval-export" {
+			assignment = fmt.Sprintf("%s; export %s;", assignment, evalVar)
+		}
+		fmt.Fprintln(out, assignment)
+		return nil
+	}
+	if len(remainingArgs) > 0 {
+		return fmt.Errorf("unexpected argument %q (VAR is only valid with --output eval-export|eval-set)", remainingArgs[0])
+	}
+	if outputFmt != "text" && outputFmt != "raw" && outputFmt != "json" {
+		return fmt.Errorf("invalid --output %q for secret get (expected text|json|raw|eval-export|eval-set)", outputFmt)
+	}
 	if outputFmt == "json" && *outputPath == "" {
 		fmt.Fprintln(out, string(body))
 		return nil
@@ -2373,6 +2411,13 @@ func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) e
 		return nil
 	}
 	return os.WriteFile(*outputPath, bytesValue, 0o600)
+}
+
+func shellSingleQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func secretDelete(baseURL string, args []string, out io.Writer) error {

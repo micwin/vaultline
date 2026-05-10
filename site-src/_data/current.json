@@ -1,7 +1,7 @@
 {
-  "version": "0.3.42",
+  "version": "0.3.43",
   "changes": [
-    "Add `secret get --output eval-export|eval-set` so secrets can be emitted as shell assignments using a positional variable name.",
-    "Document and test eval output in the CLI quickstart, CLI reference, and smokey suite."
+    "Fix zsh completion for fully qualified secret keys so final dotted name segments are inserted correctly.",
+    "Let secret completion fall back to store files for sealed stores while keeping `secret get` itself strict."
   ]
 }

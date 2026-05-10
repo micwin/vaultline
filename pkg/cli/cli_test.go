@@ -314,8 +314,18 @@ func TestCompletionScriptsSuppressSpaceForHierarchies(t *testing.T) {
 	if !strings.Contains(bashCompletionScript(), "compopt -o nospace") {
 		t.Fatalf("bash completion script should suppress spaces for hierarchical completions")
 	}
-	if !strings.Contains(zshCompletionScript(), "compadd -Q -S ''") {
+	if !strings.Contains(zshCompletionScript(), "compadd -U -Q -S ''") {
 		t.Fatalf("zsh completion script should suppress spaces for hierarchical completions")
+	}
+}
+
+func TestZshCompletionScriptDoesNotUseDescribeForColonCandidates(t *testing.T) {
+	script := zshCompletionScript()
+	if strings.Contains(script, "_describe 'vaultline' suggestions") {
+		t.Fatalf("zsh completion should not use _describe for generated suggestions with colons")
+	}
+	if !strings.Contains(script, "compadd -U -Q --") {
+		t.Fatalf("zsh completion should insert generated suggestions directly")
 	}
 }
 
@@ -356,6 +366,67 @@ func TestBuildQualifiedKeyCompletionsOnlyShowsNextLevel(t *testing.T) {
 	for index, want := range deepExpected {
 		if deeper[index] != want {
 			t.Fatalf("unexpected deeper completion at %d: got %q want %q", index, deeper[index], want)
+		}
+	}
+}
+
+func TestBuildQualifiedKeyCompletionsShowsLeafAndBranchSiblings(t *testing.T) {
+	items := buildQualifiedKeyCompletions("project-a", "project-a:stores.", []string{"stores.bitwarden", "stores.bitwarden.id", "stores.ai.passphrase"})
+	expected := []string{"project-a:stores.ai.", "project-a:stores.bitwarden", "project-a:stores.bitwarden."}
+	if len(items) != len(expected) {
+		t.Fatalf("unexpected completion count: %#v", items)
+	}
+	for index, want := range expected {
+		if items[index] != want {
+			t.Fatalf("unexpected completion at %d: got %q want %q", index, items[index], want)
+		}
+	}
+}
+
+func TestLooksLikeSecretCompletionPrefix(t *testing.T) {
+	for _, value := range []string{"project-a:", "project-a:stores.", "default:ai.token."} {
+		if !looksLikeSecretCompletionPrefix(value) {
+			t.Fatalf("expected %q to be treated as secret completion prefix", value)
+		}
+	}
+	for _, value := range []string{"project-a:stores", "stores.", "--name", ""} {
+		if looksLikeSecretCompletionPrefix(value) {
+			t.Fatalf("did not expect %q to be treated as secret completion prefix", value)
+		}
+	}
+}
+
+func TestListSecretKeysFromStoreFiles(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
+
+	cfg, err := stores.LoadConfig(resolveStoreConfigPath(), resolveLocalStorePath())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	storePath := filepath.Join(tmp, "stores", "project-a")
+	cfg.Stores["project-a"] = stores.Entry{Path: storePath}
+	if err := stores.SaveConfig(resolveStoreConfigPath(), cfg); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(storePath, "secrets"), 0o700); err != nil {
+		t.Fatalf("create secrets dir: %v", err)
+	}
+	for _, name := range []string{"app.api.key.vlx", "app.db.password.vlx", "ignored.txt"} {
+		if err := os.WriteFile(filepath.Join(storePath, "secrets", name), []byte("sealed envelope"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	keys := listSecretKeysFromStoreMetadata("project-a")
+	expected := []string{"app.api.key", "app.db.password"}
+	if len(keys) != len(expected) {
+		t.Fatalf("unexpected keys: %#v", keys)
+	}
+	for index, want := range expected {
+		if keys[index] != want {
+			t.Fatalf("unexpected key at %d: got %q want %q", index, keys[index], want)
 		}
 	}
 }

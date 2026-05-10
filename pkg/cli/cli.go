@@ -35,6 +35,7 @@ var execCommand = exec.Command
 var importKeyPattern = regexp.MustCompile(`^[\p{Ll}\p{Nd}@.-]+$`)
 var envVarPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var listConfiguredStoresFn = listConfiguredStores
+var completionSecretBaseURL = "http://127.0.0.1:8428"
 
 func usageText() string {
 	return fmt.Sprintf("vaultline %s\n\n", version.Version) + `Usage:
@@ -340,7 +341,7 @@ func Run(args []string, out io.Writer) error {
 
 	switch remaining[0] {
 	case "__complete":
-		return runComplete(remaining[1:], out)
+		return runComplete(baseURL, remaining[1:], out)
 	case "version":
 		fmt.Fprintln(out, version.Version)
 		return nil
@@ -1259,10 +1260,11 @@ func putSecret(baseURL, qualifiedKey string, value []byte) error {
 	return nil
 }
 
-func runComplete(args []string, out io.Writer) error {
+func runComplete(baseURL string, args []string, out io.Writer) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: vaultline __complete <current> [words...]")
 	}
+	completionSecretBaseURL = baseURL
 	current := args[0]
 	words := args[1:]
 	for _, item := range completeWords(words, current) {
@@ -1326,9 +1328,9 @@ _vaultline_complete() {
       fi
     done
     if (( nospace )); then
-      compadd -Q -S '' -- ${suggestions[@]}
+      compadd -U -Q -S '' -- ${suggestions[@]}
     else
-      _describe 'vaultline' suggestions
+      compadd -U -Q -- ${suggestions[@]}
     fi
   else
     _files
@@ -1512,8 +1514,12 @@ func completeSecretWords(words []string, current string) []string {
 	flagsForTransfer := []string{"--force", "--help"}
 	flagsForDeletePrefix := []string{"--dry-run", "--yes", "--help"}
 	if sub == "set" || sub == "get" || sub == "delete" || sub == "copy" || sub == "move" || sub == "delete-prefix" {
-		if strings.Contains(current, ":") || (len(words) > 1 && words[len(words)-1] == "--name") {
-			return completeQualifiedSecret(current)
+		keyCompletion := current
+		if keyCompletion == "" && len(words) > 1 && looksLikeSecretCompletionPrefix(words[len(words)-1]) {
+			keyCompletion = words[len(words)-1]
+		}
+		if strings.Contains(keyCompletion, ":") || (len(words) > 1 && words[len(words)-1] == "--name") {
+			return completeQualifiedSecret(keyCompletion)
 		}
 	}
 	if len(words) == 1 {
@@ -1550,6 +1556,10 @@ func completeSecretWords(words []string, current string) []string {
 	return nil
 }
 
+func looksLikeSecretCompletionPrefix(value string) bool {
+	return strings.Contains(value, ":") && (strings.HasSuffix(value, ":") || strings.HasSuffix(value, "."))
+}
+
 func completeQualifiedSecret(current string) []string {
 	if strings.TrimSpace(current) == "" {
 		return listStorePrefixes()
@@ -1571,11 +1581,44 @@ func completeQualifiedSecret(current string) []string {
 }
 
 func listSecretKeys(storeName string) []string {
-	baseURL, err := buildBaseURL("127.0.0.1:8428")
+	resp, err := httpClient.Get(secretListEndpoint(completionSecretBaseURL, storeName))
+	if err != nil {
+		return listSecretKeysFromStoreMetadata(storeName)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return listSecretKeysFromStoreMetadata(storeName)
+	}
+	var payload struct {
+		Keys []listEntry `json:"keys"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return listSecretKeysFromStoreMetadata(storeName)
+	}
+	keys := make([]string, 0, len(payload.Keys))
+	for _, entry := range payload.Keys {
+		keys = append(keys, entry.Name)
+	}
+	return keys
+}
+
+func listSecretKeysFromStoreMetadata(storeName string) []string {
+	if keys := listSecretKeysFromHealthStorePath(storeName); len(keys) > 0 {
+		return keys
+	}
+	cfg, err := stores.LoadConfig(resolveStoreConfigPath(), resolveLocalStorePath())
 	if err != nil {
 		return nil
 	}
-	resp, err := httpClient.Get(secretListEndpoint(baseURL, storeName))
+	entry, ok := cfg.Stores[storeName]
+	if !ok || entry.Path == "" {
+		return nil
+	}
+	return listSecretKeysFromStorePath(entry.Path)
+}
+
+func listSecretKeysFromHealthStorePath(storeName string) []string {
+	resp, err := httpClient.Get(completionSecretBaseURL + "/api/v1/health")
 	if err != nil {
 		return nil
 	}
@@ -1584,15 +1627,37 @@ func listSecretKeys(storeName string) []string {
 		return nil
 	}
 	var payload struct {
-		Keys []listEntry `json:"keys"`
+		Stores []stores.Info `json:"stores"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil
 	}
-	keys := make([]string, 0, len(payload.Keys))
-	for _, entry := range payload.Keys {
-		keys = append(keys, entry.Name)
+	for _, info := range payload.Stores {
+		if info.Name == storeName && info.Path != "" {
+			return listSecretKeysFromStorePath(info.Path)
+		}
 	}
+	return nil
+}
+
+func listSecretKeysFromStorePath(storePath string) []string {
+	secretsDir := filepath.Join(storePath, "secrets")
+	entries, err := os.ReadDir(secretsDir)
+	if err != nil {
+		return nil
+	}
+	keys := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".vlx") {
+			continue
+		}
+		keys = append(keys, strings.TrimSuffix(name, ".vlx"))
+	}
+	sort.Strings(keys)
 	return keys
 }
 

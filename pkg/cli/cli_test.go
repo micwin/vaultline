@@ -608,30 +608,43 @@ func TestStoreSealAcceptsKeepKeysAfterStoreName(t *testing.T) {
 }
 
 func TestStoreUnsealFromSecret(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stores/superstore/secrets/ai.unseal":
-			_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("from-secret-pass")), Version: "v1"})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/stores/ai/unseal":
-			var payload api.UnsealRequest
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				t.Fatalf("decode unseal request: %v", err)
+	tests := []struct {
+		name           string
+		secretValue    []byte
+		wantPassphrase string
+	}{
+		{name: "plain", secretValue: []byte("from-secret-pass"), wantPassphrase: "from-secret-pass"},
+		{name: "trailing LF", secretValue: []byte("from-secret-pass\n"), wantPassphrase: "from-secret-pass"},
+		{name: "trailing CRLF", secretValue: []byte("from-secret-pass\r\n"), wantPassphrase: "from-secret-pass"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stores/superstore/secrets/ai.unseal":
+					_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString(tt.secretValue), Version: "v1"})
+				case r.Method == http.MethodPost && r.URL.Path == "/api/v1/stores/ai/unseal":
+					var payload api.UnsealRequest
+					if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+						t.Fatalf("decode unseal request: %v", err)
+					}
+					if payload.Passphrase != tt.wantPassphrase {
+						t.Fatalf("unexpected unseal passphrase %q", payload.Passphrase)
+					}
+					if !payload.RememberPassphrase {
+						t.Fatalf("expected remember_passphrase=true")
+					}
+					_, _ = w.Write([]byte(`{"sealed":false,"store":"ai"}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+			var out bytes.Buffer
+			if err := runStore(server.URL, []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--remember-passphrase"}, &out); err != nil {
+				t.Fatalf("run store unseal from-secret: %v", err)
 			}
-			if payload.Passphrase != "from-secret-pass" {
-				t.Fatalf("unexpected unseal passphrase %q", payload.Passphrase)
-			}
-			if !payload.RememberPassphrase {
-				t.Fatalf("expected remember_passphrase=true")
-			}
-			_, _ = w.Write([]byte(`{"sealed":false,"store":"ai"}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	var out bytes.Buffer
-	if err := runStore(server.URL, []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--remember-passphrase"}, &out); err != nil {
-		t.Fatalf("run store unseal from-secret: %v", err)
+		})
 	}
 }
 

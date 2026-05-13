@@ -3,6 +3,7 @@ package stores
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -175,6 +176,38 @@ func TestManagerInitStyleUnsealLeavesStoreUnsealedAndRemembered(t *testing.T) {
 	}
 	if !info.HasKey {
 		t.Fatalf("expected initialized store to remember its passphrase")
+	}
+}
+
+func TestManagerInitRefusesExistingStoreWithoutDroppingRememberedPassphrase(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "stores.json")
+	localPath := filepath.Join(tmp, "local")
+	manager, err := NewManager(cfgPath, localPath)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	storePath := filepath.Join(tmp, "project-a")
+	if err := manager.Add("project-a", storePath, true); err != nil {
+		t.Fatalf("init store: %v", err)
+	}
+	if err := manager.Unseal("project-a", "generated-pass", true); err != nil {
+		t.Fatalf("unseal init store: %v", err)
+	}
+
+	err = manager.Add("project-a", storePath, true)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected existing store init error, got %v", err)
+	}
+	if err := manager.Unseal("project-a", "", true); err != nil {
+		t.Fatalf("remembered passphrase should still work after refused init: %v", err)
+	}
+	info, err := manager.Info("project-a")
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if !info.HasKey {
+		t.Fatalf("expected remembered passphrase to remain after refused init")
 	}
 }
 

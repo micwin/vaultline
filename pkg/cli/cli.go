@@ -2209,7 +2209,7 @@ func runStore(baseURL string, args []string, out io.Writer) error {
 				if err != nil {
 					return fmt.Errorf("read --from-secret failed: %w", err)
 				}
-				passphrase = string(secretValue)
+				passphrase = strings.TrimSpace(string(secretValue))
 			} else {
 				var err error
 				passphrase, err = readPassphraseInput(*value, *filePath, *useStdin, *promptPassphrase)

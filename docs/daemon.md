@@ -57,6 +57,7 @@ So config is **not** in `/etc/vaultline` with current packaging.
 - Named stores are unsealed via `vaultline store unseal <name> ...`.
 - `store unseal --from-secret <store:key>` reads unseal material from another store.
 - If no explicit passphrase is supplied, daemon unseal tries remembered passphrase material first.
+- Unseal verifies the derived key before reporting success. Wrong passphrases keep the store sealed instead of failing later during secret decrypt.
 
 ## HTTP API
 

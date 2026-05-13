@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	masterSaltFile = ".master_salt"
-	keyLength      = 32
+	masterSaltFile         = ".master_salt"
+	verifierFile           = ".verifier"
+	verifierPlaintext      = "vaultline-store-verifier-v1"
+	verifierAdditionalData = "vaultline-store-verifier"
+	keyLength              = 32
 )
 
 var (
@@ -50,6 +53,13 @@ type Secret struct {
 }
 
 type secretEnvelope struct {
+	Version    string    `json:"version"`
+	Nonce      string    `json:"nonce"`
+	Ciphertext string    `json:"ciphertext"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type verifierEnvelope struct {
 	Version    string    `json:"version"`
 	Nonce      string    `json:"nonce"`
 	Ciphertext string    `json:"ciphertext"`
@@ -99,6 +109,12 @@ func (s *Store) Unseal(passphrase string) error {
 		return errors.New("vaultline: passphrase required")
 	}
 	key := argon2.IDKey([]byte(passphrase), s.masterSalt, 3, 64*1024, 4, keyLength)
+	if err := s.verifyOrCreateVerifier(key); err != nil {
+		for i := range key {
+			key[i] = 0
+		}
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.masterKey = key
@@ -185,6 +201,131 @@ func (s *Store) Get(name string) (*Secret, error) {
 	return &Secret{Data: plaintext, Version: env.Version}, nil
 }
 
+func (s *Store) verifyOrCreateVerifier(masterKey []byte) error {
+	path := filepath.Join(s.root, verifierFile)
+	if data, err := os.ReadFile(path); err == nil {
+		if err := verifyMasterKey(data, masterKey); err != nil {
+			return err
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read verifier: %w", err)
+	}
+
+	if err := s.validateExistingSecretsWithKey(masterKey); err != nil {
+		return err
+	}
+	payload, err := newVerifierPayload(masterKey)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		return fmt.Errorf("write verifier: %w", err)
+	}
+	return nil
+}
+
+func verifyMasterKey(data []byte, masterKey []byte) error {
+	var env verifierEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return fmt.Errorf("decode verifier: %w", err)
+	}
+	nonce, err := base64.StdEncoding.DecodeString(env.Nonce)
+	if err != nil {
+		return fmt.Errorf("decode verifier nonce: %w", err)
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(env.Ciphertext)
+	if err != nil {
+		return fmt.Errorf("decode verifier ciphertext: %w", err)
+	}
+	aead, err := chacha20poly1305.NewX(masterKey)
+	if err != nil {
+		return fmt.Errorf("new verifier aead: %w", err)
+	}
+	plaintext, err := aead.Open(nil, nonce, ciphertext, []byte(verifierAdditionalData))
+	if err != nil {
+		return fmt.Errorf("vaultline: invalid passphrase")
+	}
+	if string(plaintext) != verifierPlaintext {
+		return fmt.Errorf("vaultline: invalid verifier")
+	}
+	return nil
+}
+
+func newVerifierPayload(masterKey []byte) ([]byte, error) {
+	aead, err := chacha20poly1305.NewX(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("new verifier aead: %w", err)
+	}
+	nonce := make([]byte, chacha20poly1305.NonceSizeX)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("verifier nonce: %w", err)
+	}
+	ciphertext := aead.Seal(nil, nonce, []byte(verifierPlaintext), []byte(verifierAdditionalData))
+	env := verifierEnvelope{
+		Version:    "v1",
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		CreatedAt:  time.Now().UTC(),
+	}
+	payload, err := json.MarshalIndent(env, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal verifier: %w", err)
+	}
+	return payload, nil
+}
+
+func (s *Store) validateExistingSecretsWithKey(masterKey []byte) error {
+	secretsDir := filepath.Join(s.root, "secrets")
+	entries, err := os.ReadDir(secretsDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read secrets for verifier migration: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if len(name) <= len(".vlx") || name[len(name)-len(".vlx"):] != ".vlx" {
+			continue
+		}
+		secretName := name[:len(name)-len(".vlx")]
+		if err := s.decryptSecretFileWithMasterKey(filepath.Join(secretsDir, name), secretName, masterKey); err != nil {
+			return fmt.Errorf("vaultline: invalid passphrase")
+		}
+		return nil
+	}
+	return nil
+}
+
+func (s *Store) decryptSecretFileWithMasterKey(pathName, secretName string, masterKey []byte) error {
+	data, err := os.ReadFile(pathName)
+	if err != nil {
+		return fmt.Errorf("read secret for verifier migration: %w", err)
+	}
+	var env secretEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return fmt.Errorf("decode secret for verifier migration: %w", err)
+	}
+	nonce, err := base64.StdEncoding.DecodeString(env.Nonce)
+	if err != nil {
+		return fmt.Errorf("decode migration nonce: %w", err)
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(env.Ciphertext)
+	if err != nil {
+		return fmt.Errorf("decode migration ciphertext: %w", err)
+	}
+	key := deriveSecretKey(masterKey, secretName)
+	aead, err := chacha20poly1305.NewX(key)
+	if err != nil {
+		return fmt.Errorf("new migration aead: %w", err)
+	}
+	if _, err := aead.Open(nil, nonce, ciphertext, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Delete removes the secret file.
 func (s *Store) Delete(name string) error {
 	if s.Sealed() {
@@ -221,13 +362,17 @@ func (s *Store) deriveKey(name string) ([]byte, error) {
 	if s.sealed || s.masterKey == nil {
 		return nil, ErrSealed
 	}
+	return deriveSecretKey(s.masterKey, keyName), nil
+}
+
+func deriveSecretKey(masterKey []byte, keyName string) []byte {
 	data := []byte(keyName)
-	mac := hmac.New(sha256.New, s.masterKey)
+	mac := hmac.New(sha256.New, masterKey)
 	mac.Write(data)
 	sum := mac.Sum(nil)
 	key := make([]byte, keyLength)
 	copy(key, sum)
-	return key, nil
+	return key
 }
 
 func normalizeKey(value string) (string, error) {

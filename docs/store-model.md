@@ -14,11 +14,18 @@ The `store:` prefix selects the store. The key segment remains the on-disk secre
 Each store has independent:
 
 - `.master_salt`
+- `.verifier`
 - passphrase
 - seal state
 - secret files
 
 This means one store can be sealed/unsealed without affecting others.
+
+## Passphrase verification
+
+Unseal verifies the supplied passphrase before marking a store unsealed. New stores write an encrypted `.verifier` file during first unseal. Existing stores without `.verifier` are migrated lazily: Vaultline first proves the candidate key by decrypting an existing secret, or by accepting an empty store, and then writes the verifier.
+
+This keeps older stores compatible while preventing a wrong passphrase from setting `sealed=false` and failing later during `secret get`.
 
 ## Remembered passphrases
 

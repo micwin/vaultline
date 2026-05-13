@@ -15,9 +15,13 @@ target_key="$(awk -F': ' '/^unseal key: / {print $2}' <<<"${target_init}")"
 [[ -n "${target_key}" ]] || { echo "[080-unseal-from-secret] missing target unseal key" >&2; exit 1; }
 
 vaultline_run_store store init "${source_store}" "${source_dir}" >/dev/null 2>&1 || true
-printf '%s' "${target_key}" | vaultline_run_store secret set "${secret_ref}" --stdin >/dev/null
+printf '%s\n' "${target_key}" | vaultline_run_store secret set "${secret_ref}" --stdin >/dev/null
 
 vaultline_run_store store seal "${target_store}" >/dev/null
+if vaultline_run_store store unseal "${target_store}" --value "wrong-${target_key}" >/dev/null 2>&1; then
+  echo "[080-unseal-from-secret] wrong passphrase unexpectedly unsealed target store" >&2
+  exit 1
+fi
 vaultline_run_store store unseal "${target_store}" --from-secret "${secret_ref}" >/dev/null
 
 value_file="$(mktemp "${SMOKEY_STATE_DIR}/unseal-from-secret.XXXX")"

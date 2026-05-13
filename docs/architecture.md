@@ -6,6 +6,7 @@
 - By default, daemon and CLI share the same user-scoped config/data area (`~/.config/vaultline`, `~/.local/share/vaultline`) unless you override flags/paths.
 - Each store has its own root:
   - `.master_salt` (base64 encoded)
+  - `.verifier` (encrypted store passphrase verifier, created lazily for older stores)
   - `secrets/<name>.vlx`
 - Secret names remain lowercase and may include `.` or `-`
 - Fully qualified keys use the form `store:key`; only the prefix selects the store, the secret filename stays `key.vlx`
@@ -24,9 +25,10 @@
 For each store independently:
 1. User supplies passphrase via CLI, `VAULTLINE_PASSPHRASE`, seal file, or a remembered key in `stores.json`
 2. Argon2id derives a 32-byte master key using that store's `.master_salt`
-3. Each secret name feeds `HMAC-SHA256(master, name)`; the result seeds XChaCha20-Poly1305
-4. Sealing zeroes the in-memory master key
-5. Unless `--keep-keys` is used, sealing also removes any remembered passphrase from the registry config
+3. Vaultline verifies the derived key against `.verifier`. If an older store has no verifier yet, the first successful unseal validates the key against an existing secret (or an empty store) and writes `.verifier`.
+4. Each secret name feeds `HMAC-SHA256(master, name)`; the result seeds XChaCha20-Poly1305
+5. Sealing zeroes the in-memory master key
+6. Unless `--keep-keys` is used, sealing also removes any remembered passphrase from the registry config
 
 ## API surface
 Legacy default-store routes (kept so older/default-store-only workflows continue to work) target `default`:

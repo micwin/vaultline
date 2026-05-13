@@ -191,6 +191,13 @@ func (m *Manager) Add(name, path string, initialize bool) error {
 	if path == "" {
 		return fmt.Errorf("store path required")
 	}
+	if initialize {
+		if _, err := os.Stat(filepath.Join(path, ".master_salt")); err == nil {
+			return fmt.Errorf("store %q already exists at %s; use store add for existing stores", name, path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
 	if !initialize {
 		if _, err := os.Stat(filepath.Join(path, ".master_salt")); err != nil {
 			if errors.Is(err, os.ErrNotExist) {

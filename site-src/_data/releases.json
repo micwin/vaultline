@@ -1,5 +1,13 @@
 [
   {
+    "version": "v0.3.44",
+    "published": "2026-05-13",
+    "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.44/vaultline_0.3.44_amd64.deb",
+    "binary_url": "https://github.com/micwin/vaultline/releases/download/v0.3.44/vaultline",
+    "release_url": "https://github.com/micwin/vaultline/releases/tag/v0.3.44",
+    "notes_url": "/release-notes/v0.3.44/"
+  },
+  {
     "version": "v0.3.43",
     "published": "2026-05-10",
     "deb_url": "https://github.com/micwin/vaultline/releases/download/v0.3.43/vaultline_0.3.43_amd64.deb",

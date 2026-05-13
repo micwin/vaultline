@@ -3,6 +3,7 @@ package storage_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/micwin/vaultline/pkg/storage"
@@ -86,5 +87,73 @@ func TestStorePersistsSalt(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "secrets", "ops.token.vlx")); err != nil {
 		t.Fatalf("secret file missing: %v", err)
+	}
+}
+
+func TestStoreUnsealRejectsWrongPassphraseAfterVerifierExists(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	if err := store.Unseal("passphrase"); err != nil {
+		t.Fatalf("unseal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".verifier")); err != nil {
+		t.Fatalf("verifier missing after unseal: %v", err)
+	}
+	store.Seal()
+
+	if err := store.Unseal("wrong-passphrase"); err == nil || !strings.Contains(err.Error(), "invalid passphrase") {
+		t.Fatalf("expected invalid passphrase error, got %v", err)
+	}
+	if !store.Sealed() {
+		t.Fatalf("store should remain sealed after wrong passphrase")
+	}
+}
+
+func TestStoreUnsealMigratesExistingStoreVerifierSafely(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	if err := store.Unseal("passphrase"); err != nil {
+		t.Fatalf("unseal: %v", err)
+	}
+	if _, err := store.Put("ops.token", []byte("value")); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	store.Seal()
+	if err := os.Remove(filepath.Join(dir, ".verifier")); err != nil {
+		t.Fatalf("remove verifier to simulate legacy store: %v", err)
+	}
+
+	legacyStore, err := storage.New(dir)
+	if err != nil {
+		t.Fatalf("recreate legacy store: %v", err)
+	}
+	if err := legacyStore.Unseal("wrong-passphrase"); err == nil || !strings.Contains(err.Error(), "invalid passphrase") {
+		t.Fatalf("expected invalid passphrase error for legacy store, got %v", err)
+	}
+	if !legacyStore.Sealed() {
+		t.Fatalf("legacy store should remain sealed after wrong passphrase")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".verifier")); !os.IsNotExist(err) {
+		t.Fatalf("wrong passphrase should not create verifier, stat err=%v", err)
+	}
+
+	if err := legacyStore.Unseal("passphrase"); err != nil {
+		t.Fatalf("correct legacy unseal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".verifier")); err != nil {
+		t.Fatalf("verifier missing after legacy migration: %v", err)
+	}
+	secret, err := legacyStore.Get("ops.token")
+	if err != nil {
+		t.Fatalf("get migrated secret: %v", err)
+	}
+	if string(secret.Data) != "value" {
+		t.Fatalf("unexpected migrated payload: %q", string(secret.Data))
 	}
 }

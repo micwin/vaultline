@@ -448,6 +448,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#passphrase-verification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passphrase verification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#remembered-passphrases" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -802,11 +813,15 @@
 <p>Each store has independent:</p>
 <ul>
 <li><code>.master_salt</code></li>
+<li><code>.verifier</code></li>
 <li>passphrase</li>
 <li>seal state</li>
 <li>secret files</li>
 </ul>
 <p>This means one store can be sealed/unsealed without affecting others.</p>
+<h2 id="passphrase-verification">Passphrase verification</h2>
+<p>Unseal verifies the supplied passphrase before marking a store unsealed. New stores write an encrypted <code>.verifier</code> file during first unseal. Existing stores without <code>.verifier</code> are migrated lazily: Vaultline first proves the candidate key by decrypting an existing secret, or by accepting an empty store, and then writes the verifier.</p>
+<p>This keeps older stores compatible while preventing a wrong passphrase from setting <code>sealed=false</code> and failing later during <code>secret get</code>.</p>
 <h2 id="remembered-passphrases">Remembered passphrases</h2>
 <ul>
 <li><code>store init</code> can persist generated passphrases in the local registry.</li>

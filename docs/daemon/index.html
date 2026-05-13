@@ -988,6 +988,7 @@
 <li>Named stores are unsealed via <code>vaultline store unseal &lt;name&gt; ...</code>.</li>
 <li><code>store unseal --from-secret &lt;store:key&gt;</code> reads unseal material from another store.</li>
 <li>If no explicit passphrase is supplied, daemon unseal tries remembered passphrase material first.</li>
+<li>Unseal verifies the derived key before reporting success. Wrong passphrases keep the store sealed instead of failing later during secret decrypt.</li>
 </ul>
 <h2 id="http-api">HTTP API</h2>
 <h3 id="get-apiv1health"><code>GET /api/v1/health</code></h3>

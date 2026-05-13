@@ -831,6 +831,7 @@
 <li>By default, daemon and CLI share the same user-scoped config/data area (<code>~/.config/vaultline</code>, <code>~/.local/share/vaultline</code>) unless you override flags/paths.</li>
 <li>Each store has its own root:</li>
 <li><code>.master_salt</code> (base64 encoded)</li>
+<li><code>.verifier</code> (encrypted store passphrase verifier, created lazily for older stores)</li>
 <li><code>secrets/&lt;name&gt;.vlx</code></li>
 <li>Secret names remain lowercase and may include <code>.</code> or <code>-</code></li>
 <li>Fully qualified keys use the form <code>store:key</code>; only the prefix selects the store, the secret filename stays <code>key.vlx</code></li>
@@ -850,9 +851,10 @@
 <p>For each store independently:
 1. User supplies passphrase via CLI, <code>VAULTLINE_PASSPHRASE</code>, seal file, or a remembered key in <code>stores.json</code>
 2. Argon2id derives a 32-byte master key using that store's <code>.master_salt</code>
-3. Each secret name feeds <code>HMAC-SHA256(master, name)</code>; the result seeds XChaCha20-Poly1305
-4. Sealing zeroes the in-memory master key
-5. Unless <code>--keep-keys</code> is used, sealing also removes any remembered passphrase from the registry config</p>
+3. Vaultline verifies the derived key against <code>.verifier</code>. If an older store has no verifier yet, the first successful unseal validates the key against an existing secret (or an empty store) and writes <code>.verifier</code>.
+4. Each secret name feeds <code>HMAC-SHA256(master, name)</code>; the result seeds XChaCha20-Poly1305
+5. Sealing zeroes the in-memory master key
+6. Unless <code>--keep-keys</code> is used, sealing also removes any remembered passphrase from the registry config</p>
 <h2 id="api-surface">API surface</h2>
 <p>Legacy default-store routes (kept so older/default-store-only workflows continue to work) target <code>default</code>:
 - <code>GET /api/v1/health</code>

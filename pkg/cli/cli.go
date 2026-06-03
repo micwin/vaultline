@@ -1509,7 +1509,7 @@ func completeSecretWords(words []string, current string) []string {
 	}
 	sub := words[0]
 	flagsForSet := []string{"--name", "--value", "--file", "--stdin", "--twice", "--help"}
-	flagsForGet := []string{"--name", "--out", "--help"}
+	flagsForGet := []string{"--name", "--out", "--output", "--help"}
 	flagsForDelete := []string{"--name", "--help"}
 	flagsForTransfer := []string{"--force", "--help"}
 	flagsForDeletePrefix := []string{"--dry-run", "--yes", "--help"}
@@ -2391,13 +2391,15 @@ func secretSet(baseURL string, args []string, out io.Writer) error {
 }
 
 func secretGet(baseURL string, args []string, outputFmt string, out io.Writer) error {
-	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--out": true, "--name": true})
+	keyArg, flagArgs := splitKeyArg(args, map[string]bool{"--out": true, "--name": true, "--output": true})
 	fs := flag.NewFlagSet("secret get", flag.ContinueOnError)
 	name := fs.String("name", "", "secret identifier")
 	outputPath := fs.String("out", "", "write secret to file (default stdout)")
+	localOutput := fs.String("output", outputFmt, "output format (text|raw|json|eval-export|eval-set)")
 	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
+	outputFmt = *localOutput
 	key := strings.TrimSpace(*name)
 	remainingArgs := fs.Args()
 	keyFromPositional := false

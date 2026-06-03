@@ -22,6 +22,26 @@ import (
 	"github.com/micwin/vaultline/pkg/version"
 )
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func withMockHTTP(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	orig := httpClient
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Result(), nil
+	})}
+	t.Cleanup(func() {
+		httpClient = orig
+	})
+	return "http://127.0.0.1:8428"
+}
+
 func TestParseQualifiedKey(t *testing.T) {
 	store, key, err := parseQualifiedKey("project-a:db.password")
 	if err != nil {
@@ -103,17 +123,69 @@ func TestLongVersionFlagPrintsRawVersion(t *testing.T) {
 	}
 }
 
+func TestSecretGetAcceptsLocalOutputFlagOrderings(t *testing.T) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/stores/default/secrets/cli.demo" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("demo value")), Version: "v1"})
+	}))
+
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "local output after key",
+			args: []string{"--addr", baseURL, "secret", "get", "default:cli.demo", "--output", "raw"},
+			want: "demo value",
+		},
+		{
+			name: "local output equals after key",
+			args: []string{"--addr", baseURL, "secret", "get", "default:cli.demo", "--output=raw"},
+			want: "demo value",
+		},
+		{
+			name: "local output before key",
+			args: []string{"--addr", baseURL, "secret", "get", "--output", "raw", "default:cli.demo"},
+			want: "demo value",
+		},
+		{
+			name: "global output still works",
+			args: []string{"--addr", baseURL, "--output", "raw", "secret", "get", "default:cli.demo"},
+			want: "demo value",
+		},
+		{
+			name: "local eval output with var",
+			args: []string{"--addr", baseURL, "secret", "get", "default:cli.demo", "--output", "eval-export", "TOKEN"},
+			want: "TOKEN='demo value'; export TOKEN;\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := Run(tt.args, &out); err != nil {
+				t.Fatalf("run secret get: %v", err)
+			}
+			if got := out.String(); got != tt.want {
+				t.Fatalf("unexpected output: got %q want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSecretGetEnvAssignmentAndExport(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/stores/default/secrets/env.demo" {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("alpha 'beta' gamma")), Version: "v1"})
 	}))
-	defer server.Close()
 
 	var out bytes.Buffer
-	if err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "eval-set", &out); err != nil {
+	if err := secretGet(baseURL, []string{"default:env.demo", "TOKEN"}, "eval-set", &out); err != nil {
 		t.Fatalf("secretGet env: %v", err)
 	}
 	if got := strings.TrimSpace(out.String()); got != `TOKEN='alpha '\''beta'\'' gamma'` {
@@ -121,7 +193,7 @@ func TestSecretGetEnvAssignmentAndExport(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "eval-export", &out); err != nil {
+	if err := secretGet(baseURL, []string{"default:env.demo", "TOKEN"}, "eval-export", &out); err != nil {
 		t.Fatalf("secretGet env export: %v", err)
 	}
 	if got := strings.TrimSpace(out.String()); got != `TOKEN='alpha '\''beta'\'' gamma'; export TOKEN;` {
@@ -130,26 +202,24 @@ func TestSecretGetEnvAssignmentAndExport(t *testing.T) {
 }
 
 func TestSecretGetEnvRejectsUnexpectedVarOutsideEvalMode(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("ok")), Version: "v1"})
 	}))
-	defer server.Close()
 
 	var out bytes.Buffer
-	err := secretGet(server.URL, []string{"default:env.demo", "TOKEN"}, "json", &out)
+	err := secretGet(baseURL, []string{"default:env.demo", "TOKEN"}, "json", &out)
 	if err == nil || !strings.Contains(err.Error(), "VAR is only valid") {
 		t.Fatalf("expected json/output conflict, got %v", err)
 	}
 }
 
 func TestSecretGetEvalRequiresVariable(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString([]byte("ok")), Version: "v1"})
 	}))
-	defer server.Close()
 
 	var out bytes.Buffer
-	err := secretGet(server.URL, []string{"default:env.demo"}, "eval-set", &out)
+	err := secretGet(baseURL, []string{"default:env.demo"}, "eval-set", &out)
 	if err == nil || !strings.Contains(err.Error(), "requires exactly one VAR argument") {
 		t.Fatalf("expected missing VAR error, got %v", err)
 	}
@@ -562,7 +632,7 @@ func TestChooseImportAction(t *testing.T) {
 }
 
 func TestSecretDeletePrefixDryRun(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stores/default/secrets":
 			w.Header().Set("Content-Type", "application/json")
@@ -571,9 +641,8 @@ func TestSecretDeletePrefixDryRun(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer server.Close()
 	var out bytes.Buffer
-	if err := secretDeletePrefix(server.URL, []string{"default:app.demo.", "--dry-run"}, &out); err != nil {
+	if err := secretDeletePrefix(baseURL, []string{"default:app.demo.", "--dry-run"}, &out); err != nil {
 		t.Fatalf("delete-prefix dry-run: %v", err)
 	}
 	output := out.String()
@@ -586,7 +655,7 @@ func TestSecretDeletePrefixDryRun(t *testing.T) {
 }
 
 func TestStoreSealAcceptsKeepKeysAfterStoreName(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/stores/project-a/seal" {
 			http.NotFound(w, r)
 			return
@@ -600,9 +669,8 @@ func TestStoreSealAcceptsKeepKeysAfterStoreName(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"sealed":true,"store":"project-a","keep_keys":true}`))
 	}))
-	defer server.Close()
 	var out bytes.Buffer
-	if err := runStore(server.URL, []string{"seal", "project-a", "--keep-keys"}, &out); err != nil {
+	if err := runStore(baseURL, []string{"seal", "project-a", "--keep-keys"}, &out); err != nil {
 		t.Fatalf("run store seal: %v", err)
 	}
 }
@@ -619,7 +687,7 @@ func TestStoreUnsealFromSecret(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/v1/stores/superstore/secrets/ai.unseal":
 					_ = json.NewEncoder(w).Encode(api.SecretResponse{Value: base64.StdEncoding.EncodeToString(tt.secretValue), Version: "v1"})
@@ -639,9 +707,8 @@ func TestStoreUnsealFromSecret(t *testing.T) {
 					http.NotFound(w, r)
 				}
 			}))
-			defer server.Close()
 			var out bytes.Buffer
-			if err := runStore(server.URL, []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--remember-passphrase"}, &out); err != nil {
+			if err := runStore(baseURL, []string{"unseal", "ai", "--from-secret", "superstore:ai.unseal", "--remember-passphrase"}, &out); err != nil {
 				t.Fatalf("run store unseal from-secret: %v", err)
 			}
 		})
@@ -668,7 +735,7 @@ func TestParseGlobPattern(t *testing.T) {
 }
 
 func TestSecretGlobMatchesAcrossStores(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/stores/default/secrets":
 			_, _ = w.Write([]byte(`{"keys":[{"name":"app.demo.one"}]}`))
@@ -678,12 +745,11 @@ func TestSecretGlobMatchesAcrossStores(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer server.Close()
 	origStores := listConfiguredStoresFn
 	defer func() { listConfiguredStoresFn = origStores }()
 	listConfiguredStoresFn = func(includeLocal bool) []string { return []string{"default", "project-a"} }
 	var out bytes.Buffer
-	if err := secretGlob(server.URL, []string{"project-*:*.zf.*test*"}, "text", &out); err != nil {
+	if err := secretGlob(baseURL, []string{"project-*:*.zf.*test*"}, "text", &out); err != nil {
 		t.Fatalf("secret glob: %v", err)
 	}
 	output := out.String()
@@ -700,7 +766,7 @@ func TestSecretTransferCopyMoveAndForce(t *testing.T) {
 		"source:alpha": base64.StdEncoding.EncodeToString([]byte("from-source")),
 		"target:alpha": base64.StdEncoding.EncodeToString([]byte("existing-target")),
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseURL := withMockHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/v1/stores/") || !strings.Contains(r.URL.Path, "/secrets/") {
 			http.NotFound(w, r)
 			return
@@ -749,10 +815,9 @@ func TestSecretTransferCopyMoveAndForce(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer server.Close()
 
 	var out bytes.Buffer
-	err := secretTransfer(server.URL, []string{"source:alpha", "target:alpha"}, false, &out)
+	err := secretTransfer(baseURL, []string{"source:alpha", "target:alpha"}, false, &out)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("expected collision error without --force, got %v", err)
 	}
@@ -761,7 +826,7 @@ func TestSecretTransferCopyMoveAndForce(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := secretTransfer(server.URL, []string{"source:alpha", "target:alpha", "--force"}, false, &out); err != nil {
+	if err := secretTransfer(baseURL, []string{"source:alpha", "target:alpha", "--force"}, false, &out); err != nil {
 		t.Fatalf("forced copy failed: %v", err)
 	}
 	if got := secrets["target:alpha"]; got != base64.StdEncoding.EncodeToString([]byte("from-source")) {
@@ -772,7 +837,7 @@ func TestSecretTransferCopyMoveAndForce(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := secretTransfer(server.URL, []string{"source:alpha", "target:beta"}, true, &out); err != nil {
+	if err := secretTransfer(baseURL, []string{"source:alpha", "target:beta"}, true, &out); err != nil {
 		t.Fatalf("move failed: %v", err)
 	}
 	if _, ok := secrets["source:alpha"]; ok {
